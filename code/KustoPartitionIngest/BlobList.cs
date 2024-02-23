@@ -32,7 +32,7 @@ namespace KustoPartitionIngest
                     throw new ArgumentException("No container in URL", nameof(storageUrl));
                 }
                 var containerName = parts[1];
-                var containerUri = new Uri("");
+                var containerUri = new Uri($"{storageUri.Scheme}://{storageUri.Host}/{containerName}");
                 var prefix = string.Join('/', parts.Skip(2));
 
                 return (containerUri, prefix);
