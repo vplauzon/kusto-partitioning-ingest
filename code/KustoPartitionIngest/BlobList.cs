@@ -8,6 +8,8 @@ namespace KustoPartitionIngest
         private readonly BlobContainerClient _blobContainer;
         private readonly string _prefix;
 
+        public event EventHandler<Uri> UriDiscovered;
+
         #region Constructors
         public BlobList(TokenCredential credentials, string storageUrl)
         {
@@ -45,13 +47,21 @@ namespace KustoPartitionIngest
         {
             var pageable = _blobContainer.GetBlobsAsync(prefix: _prefix);
 
-            await foreach(var item in pageable)
+            await foreach (var item in pageable)
             {
                 var blobName = item.Name;
                 var blobClient = _blobContainer.GetBlobClient(blobName);
                 var blobUri = blobClient.Uri;
 
-                Console.WriteLine(blobUri);
+                RaiseUri(blobUri);
+            }
+        }
+
+        private void RaiseUri(Uri blobUri)
+        {
+            if (UriDiscovered != null)
+            {
+                UriDiscovered(this, blobUri);
             }
         }
     }

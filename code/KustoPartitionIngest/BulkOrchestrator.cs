@@ -30,6 +30,10 @@ namespace KustoPartitionIngest
 
         public async Task RunAsync()
         {
+            _blobList.UriDiscovered += (sender, blobUri) =>
+            {
+                Console.WriteLine(blobUri);
+            };
             await _blobList.ListBlobsAsync();
         }
     }
