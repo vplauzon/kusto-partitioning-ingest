@@ -5,11 +5,9 @@ namespace KustoPartitionIngest
 {
     internal class BulkOrchestrator
     {
-        private readonly BlobList _blobList;
-        private readonly string _tableName;
-        private readonly string _databaseName;
-        private readonly string _ingestionUri1;
-        private readonly string _ingestionUri2;
+        private readonly BlobListManager _blobListManager;
+        private readonly QueueManager _queueManager1;
+        private readonly QueueManager? _queueManager2;
 
         public BulkOrchestrator(
             string storageUrl,
@@ -20,21 +18,30 @@ namespace KustoPartitionIngest
         {
             var credentials = new DefaultAzureCredential(true);
 
-            _blobList = new BlobList(credentials, storageUrl);
-
-            _tableName = tableName;
-            _databaseName = databaseName;
-            _ingestionUri1 = ingestionUri1;
-            _ingestionUri2 = ingestionUri2;
+            _blobListManager = new BlobListManager(credentials, storageUrl);
+            _queueManager1 = new QueueManager(
+                credentials,
+                true,
+                ingestionUri1,
+                tableName,
+                databaseName);
+            _queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
+                ? null
+                : new QueueManager(
+                    credentials,
+                    false,
+                    ingestionUri2,
+                    databaseName,
+                    tableName);
         }
 
         public async Task RunAsync()
         {
-            _blobList.UriDiscovered += (sender, blobUri) =>
+            _blobListManager.UriDiscovered += (sender, blobUri) =>
             {
                 Console.WriteLine(blobUri);
             };
-            await _blobList.ListBlobsAsync();
+            await _blobListManager.ListBlobsAsync();
         }
     }
 }

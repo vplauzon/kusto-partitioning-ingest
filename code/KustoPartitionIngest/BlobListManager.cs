@@ -3,7 +3,7 @@ using Azure.Storage.Blobs;
 
 namespace KustoPartitionIngest
 {
-    internal class BlobList
+    internal class BlobListManager
     {
         private readonly BlobContainerClient _blobContainer;
         private readonly string _prefix;
@@ -11,7 +11,7 @@ namespace KustoPartitionIngest
         public event EventHandler<Uri> UriDiscovered;
 
         #region Constructors
-        public BlobList(TokenCredential credentials, string storageUrl)
+        public BlobListManager(TokenCredential credentials, string storageUrl)
         {
             (var containerUri, var prefix) = ExtractContainerAndPrefix(storageUrl);
 
