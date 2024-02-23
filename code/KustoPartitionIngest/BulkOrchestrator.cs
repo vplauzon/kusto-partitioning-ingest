@@ -39,9 +39,27 @@ namespace KustoPartitionIngest
         {
             _blobListManager.UriDiscovered += (sender, blobUri) =>
             {
-                Console.WriteLine(blobUri);
+                _queueManager1.QueueUri(blobUri);
+                _queueManager2?.QueueUri(blobUri);
             };
-            await _blobListManager.ListBlobsAsync();
+
+            var reportManager =
+                new ReportManager(_blobListManager, _queueManager1, _queueManager2);
+            var listTask = _blobListManager.ListBlobsAsync();
+            var queue1Task = _queueManager1.RunAsync();
+            var queue2Task = _queueManager2?.RunAsync();
+            var reportTask = reportManager.RunAsync();
+
+            await listTask;
+            _queueManager1.Complete();
+            _queueManager2?.Complete();
+            await queue1Task;
+            if (queue2Task != null)
+            {
+                await queue2Task;
+            }
+            reportManager.Complete();
+            await reportTask;
         }
     }
 }
