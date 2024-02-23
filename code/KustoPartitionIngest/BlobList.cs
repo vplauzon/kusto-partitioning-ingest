@@ -27,12 +27,13 @@ namespace KustoPartitionIngest
             {
                 var parts = storageUri.AbsolutePath.Split('/');
 
-                if(parts.Length < 1 )
+                if (parts.Length < 1)
                 {
                     throw new ArgumentException("No container in URL", nameof(storageUrl));
                 }
                 var containerName = parts[1];
-                var containerUri = new Uri($"{storageUri.Scheme}://{storageUri.Host}/{containerName}");
+                var containerUri =
+                    new Uri($"{storageUri.Scheme}://{storageUri.Host}/{containerName}");
                 var prefix = string.Join('/', parts.Skip(2));
 
                 return (containerUri, prefix);
@@ -40,9 +41,18 @@ namespace KustoPartitionIngest
         }
         #endregion
 
-        public Task ListBlobsAsync()
+        public async Task ListBlobsAsync()
         {
-            throw new NotImplementedException();
+            var pageable = _blobContainer.GetBlobsAsync(prefix: _prefix);
+
+            await foreach(var item in pageable)
+            {
+                var blobName = item.Name;
+                var blobClient = _blobContainer.GetBlobClient(blobName);
+                var blobUri = blobClient.Uri;
+
+                Console.WriteLine(blobUri);
+            }
         }
     }
 }

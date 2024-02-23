@@ -18,7 +18,7 @@ namespace KustoPartitionIngest
             string ingestionUri1,
             string ingestionUri2)
         {
-            var credentials = new DefaultAzureCredential();
+            var credentials = new DefaultAzureCredential(true);
 
             _blobList = new BlobList(credentials, storageUrl);
 
