@@ -2,7 +2,7 @@
 {
     internal class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             if (args.Length < 4)
             {
@@ -25,12 +25,20 @@
                 var databaseName = args[2];
                 var ingestionUri1 = args[3];
                 var ingestionUri2 = args.Length >= 5 ? args[4] : string.Empty;
+                var orchestrator = new BulkOrchestrator(
+                    storageUrl,
+                    tableName,
+                    databaseName,
+                    ingestionUri1,
+                    ingestionUri2);
 
                 Console.WriteLine($"Storage URL:  {storageUrl}");
                 Console.WriteLine($"Kusto Table Name:  {tableName}");
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");
                 Console.WriteLine($"Ingestion URI 1:  {ingestionUri1}");
                 Console.WriteLine($"Ingestion URI 2:  {ingestionUri2}");
+
+                await orchestrator.RunAsync();
             }
         }
     }
