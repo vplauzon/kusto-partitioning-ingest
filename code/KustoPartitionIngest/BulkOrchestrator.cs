@@ -1,4 +1,6 @@
 ﻿
+using Azure.Identity;
+
 namespace KustoPartitionIngest
 {
     internal class BulkOrchestrator
@@ -16,7 +18,9 @@ namespace KustoPartitionIngest
             string ingestionUri1,
             string ingestionUri2)
         {
-            _blobList = new BlobList(storageUrl);
+            var credentials = new DefaultAzureCredential();
+
+            _blobList = new BlobList(credentials, storageUrl);
 
             _tableName = tableName;
             _databaseName = databaseName;
