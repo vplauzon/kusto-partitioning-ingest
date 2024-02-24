@@ -13,6 +13,8 @@ namespace KustoPartitionIngest
         private readonly string _tableName;
         private readonly ConcurrentQueue<Uri> _blobUris = new();
 
+        public event EventHandler BlobUriQueued;
+
         public QueueManager(
             DefaultAzureCredential credentials,
             bool hasPartitioningHint,
