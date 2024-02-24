@@ -51,6 +51,7 @@ namespace KustoPartitionIngest
             var reportTask = reportManager.RunAsync();
 
             await listTask;
+            Console.WriteLine("Done listing");
             _queueManager1.Complete();
             _queueManager2?.Complete();
             await queue1Task;
