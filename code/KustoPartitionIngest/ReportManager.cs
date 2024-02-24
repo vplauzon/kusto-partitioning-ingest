@@ -5,6 +5,8 @@ namespace KustoPartitionIngest
 {
     internal class ReportManager
     {
+        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(1);
+
         private readonly BlobListManager _blobListManager;
         private readonly IImmutableList<QueueManager> _queueManagers;
         private readonly TaskCompletionSource _completionSource = new();
@@ -42,7 +44,7 @@ namespace KustoPartitionIngest
             }
             while (!_completionSource.Task.IsCompleted)
             {
-                await Task.WhenAny(_completionSource.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+                await Task.WhenAny(_completionSource.Task, Task.Delay(PERIOD));
                 Console.WriteLine($"Queued:  {string.Join(", ", queueCounts)}");
                 Console.WriteLine($"Discovered:  {listCount}");
                 Console.WriteLine();
