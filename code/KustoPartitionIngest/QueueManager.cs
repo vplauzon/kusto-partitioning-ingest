@@ -51,9 +51,7 @@ namespace KustoPartitionIngest
                     (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
                     var properties = new KustoIngestionProperties(_databaseName, _tableName);
 
-                    await _ingestClient.IngestFromStorageAsync(
-                        $"{blobUri};managed_identity=system",
-                        properties);
+                    await _ingestClient.IngestFromStorageAsync($"{blobUri}", properties);
                     RaiseBlobUriQueued();
                 }
                 else

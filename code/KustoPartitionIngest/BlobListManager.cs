@@ -1,4 +1,4 @@
-﻿using Azure.Core;
+﻿using Azure;
 using Azure.Storage.Blobs;
 
 namespace KustoPartitionIngest
@@ -6,20 +6,24 @@ namespace KustoPartitionIngest
     internal class BlobListManager
     {
         private readonly BlobContainerClient _blobContainer;
+        private readonly string _sasToken;
         private readonly string _prefix;
 
         public event EventHandler<Uri>? UriDiscovered;
 
         #region Constructors
-        public BlobListManager(TokenCredential credentials, string storageUrl)
+        public BlobListManager(string storageUrl)
         {
-            (var containerUri, var prefix) = ExtractContainerAndPrefix(storageUrl);
+            (var sasToken, var containerUri, var prefix) = ExtractContainerAndPrefix(storageUrl);
+            var sasTokenCredential = new AzureSasCredential(sasToken);
 
-            _blobContainer = new BlobContainerClient(containerUri, credentials);
+            _blobContainer = new BlobContainerClient(containerUri, sasTokenCredential);
+            _sasToken = sasToken.ToString()!;
             _prefix = prefix;
         }
 
-        private static (Uri containerUri, string prefix) ExtractContainerAndPrefix(string storageUrl)
+        private static (string sasToken, Uri containerUri, string prefix) ExtractContainerAndPrefix(
+            string storageUrl)
         {
             if (!Uri.TryCreate(storageUrl, UriKind.Absolute, out var storageUri))
             {
@@ -38,7 +42,7 @@ namespace KustoPartitionIngest
                     new Uri($"{storageUri.Scheme}://{storageUri.Host}/{containerName}");
                 var prefix = string.Join('/', parts.Skip(2));
 
-                return (containerUri, prefix);
+                return (storageUri.Query, containerUri, prefix);
             }
         }
         #endregion
@@ -51,7 +55,7 @@ namespace KustoPartitionIngest
             {
                 var blobName = item.Name;
                 var blobClient = _blobContainer.GetBlobClient(blobName);
-                var blobUri = blobClient.Uri;
+                var blobUri = new Uri($"{blobClient.Uri}{_sasToken}");
 
                 RaiseUri(blobUri);
             }

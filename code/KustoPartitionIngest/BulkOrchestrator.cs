@@ -18,13 +18,13 @@ namespace KustoPartitionIngest
         {
             var credentials = new DefaultAzureCredential(true);
 
-            _blobListManager = new BlobListManager(credentials, storageUrl);
+            _blobListManager = new BlobListManager(storageUrl);
             _queueManager1 = new QueueManager(
                 credentials,
                 true,
                 ingestionUri1,
-                tableName,
-                databaseName);
+                databaseName,
+                tableName);
             _queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
                 ? null
                 : new QueueManager(
