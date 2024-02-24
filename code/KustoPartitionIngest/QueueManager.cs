@@ -1,4 +1,4 @@
-﻿using Azure.Identity;
+﻿using Azure.Core;
 using Kusto.Data;
 using Kusto.Ingest;
 using System.Collections.Concurrent;
@@ -17,7 +17,7 @@ namespace KustoPartitionIngest
         public event EventHandler? BlobUriQueued;
 
         public QueueManager(
-            DefaultAzureCredential credentials,
+            TokenCredential credentials,
             bool hasPartitioningHint,
             string ingestionUri,
             string databaseName,

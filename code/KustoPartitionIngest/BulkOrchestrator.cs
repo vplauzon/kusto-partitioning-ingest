@@ -16,7 +16,7 @@ namespace KustoPartitionIngest
             string ingestionUri1,
             string ingestionUri2)
         {
-            var credentials = new DefaultAzureCredential(true);
+            var credentials = new AzureCliCredential();
 
             _blobListManager = new BlobListManager(storageUrl);
             _queueManager1 = new QueueManager(
@@ -51,7 +51,6 @@ namespace KustoPartitionIngest
             var reportTask = reportManager.RunAsync();
 
             await listTask;
-            Console.WriteLine("Done listing");
             _queueManager1.Complete();
             _queueManager2?.Complete();
             await queue1Task;
