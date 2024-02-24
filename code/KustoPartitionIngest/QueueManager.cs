@@ -44,8 +44,10 @@ namespace KustoPartitionIngest
 
         public async Task RunAsync()
         {
+            Console.WriteLine("Before");
             while (!_isCompleted || _blobUris.Any())
             {
+                Console.WriteLine("Loop");
                 if (_blobUris.TryDequeue(out var blobUri))
                 {
                     (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
