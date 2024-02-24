@@ -15,7 +15,7 @@ namespace KustoPartitionIngest
             string ingestionUri1,
             string ingestionUri2)
         {
-            var credentials = new InteractiveBrowserCredential();
+            var credentials = new AzurePowerShellCredential();
 
             _blobListManager = new BlobListManager(storageUrl);
             _queueManager1 = new QueueManager(
