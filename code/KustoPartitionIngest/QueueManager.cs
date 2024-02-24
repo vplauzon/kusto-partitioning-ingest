@@ -55,7 +55,14 @@ namespace KustoPartitionIngest
                     var properties = new KustoIngestionProperties(_databaseName, _tableName);
 
                     Console.WriteLine($"Blob:  {blobUri}");
+                    try
+                    {
                     await _ingestClient.IngestFromStorageAsync($"{blobUri}", properties);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error:  {ex.Message}");
+                    }
                     Console.WriteLine("Queued");
                     RaiseBlobUriQueued();
                 }
