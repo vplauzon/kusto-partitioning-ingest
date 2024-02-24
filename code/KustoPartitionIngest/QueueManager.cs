@@ -44,10 +44,16 @@ namespace KustoPartitionIngest
 
         public async Task RunAsync()
         {
-            while (_isCompleted)
+            while (!_isCompleted || _blobUris.Any())
             {
                 if (_blobUris.TryDequeue(out var blobUri))
                 {
+                    (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
+                    var properties = new KustoIngestionProperties(_databaseName, _tableName);
+
+                    await _ingestClient.IngestFromStorageAsync(
+                        $"{blobUri};managed_identity=system",
+                        properties);
                     RaiseBlobUriQueued();
                 }
                 else
@@ -55,6 +61,11 @@ namespace KustoPartitionIngest
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
             }
+        }
+
+        private (DateTime? timestamp, string? partitionKey) AnalyzeUri(Uri blobUri)
+        {
+            return (null, null);
         }
 
         private void RaiseBlobUriQueued()

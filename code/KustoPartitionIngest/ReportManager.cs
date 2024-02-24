@@ -5,7 +5,7 @@ namespace KustoPartitionIngest
 {
     internal class ReportManager
     {
-        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(5);
 
         private readonly BlobListManager _blobListManager;
         private readonly IImmutableList<QueueManager> _queueManagers;
@@ -37,9 +37,11 @@ namespace KustoPartitionIngest
             };
             for (int i = 0; i != queueCounts.Length; ++i)
             {
+                var index = i;
+
                 _queueManagers[i].BlobUriQueued += (sender, e) =>
                 {
-                    Interlocked.Increment(ref queueCounts[i]);
+                    Interlocked.Increment(ref queueCounts[index]);
                 };
             }
             while (!_completionSource.Task.IsCompleted)
