@@ -3,11 +3,14 @@ using Azure.Identity;
 using Kusto.Data;
 using Kusto.Ingest;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 
 namespace KustoPartitionIngest
 {
     internal class QueueManager
     {
+        private const int PARALLEL_QUEUING = 32;
+
         private readonly IKustoQueuedIngestClient _ingestClient;
         private readonly bool _hasPartitioningHint;
         private readonly string _databaseName;
@@ -44,6 +47,15 @@ namespace KustoPartitionIngest
         }
 
         public async Task RunAsync()
+        {
+            var processTasks = Enumerable.Range(0, PARALLEL_QUEUING)
+                .Select(i => Task.Run(() => ProcessUriAsync()))
+                .ToImmutableArray();
+
+            await Task.WhenAll(processTasks);
+        }
+
+        private async Task ProcessUriAsync()
         {
             while (!_isCompleted || _blobUris.Any())
             {
