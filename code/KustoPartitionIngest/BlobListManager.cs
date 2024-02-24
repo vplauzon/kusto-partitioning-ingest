@@ -8,7 +8,7 @@ namespace KustoPartitionIngest
         private readonly BlobContainerClient _blobContainer;
         private readonly string _prefix;
 
-        public event EventHandler<Uri> UriDiscovered;
+        public event EventHandler<Uri>? UriDiscovered;
 
         #region Constructors
         public BlobListManager(TokenCredential credentials, string storageUrl)

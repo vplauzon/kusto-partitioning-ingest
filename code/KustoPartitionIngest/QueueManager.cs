@@ -12,8 +12,9 @@ namespace KustoPartitionIngest
         private readonly string _databaseName;
         private readonly string _tableName;
         private readonly ConcurrentQueue<Uri> _blobUris = new();
+        private bool _isCompleted = false;
 
-        public event EventHandler BlobUriQueued;
+        public event EventHandler? BlobUriQueued;
 
         public QueueManager(
             DefaultAzureCredential credentials,
@@ -38,12 +39,30 @@ namespace KustoPartitionIngest
 
         public void Complete()
         {
-            throw new NotImplementedException();
+            _isCompleted = true;
         }
 
-        public Task RunAsync()
+        public async Task RunAsync()
         {
-            throw new NotImplementedException();
+            while (_isCompleted)
+            {
+                if (_blobUris.TryDequeue(out var blobUri))
+                {
+                    RaiseBlobUriQueued();
+                }
+                else
+                {   //  Wait for more blobs
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+            }
+        }
+
+        private void RaiseBlobUriQueued()
+        {
+            if (BlobUriQueued != null)
+            {
+                BlobUriQueued(this, EventArgs.Empty);
+            }
         }
     }
 }
