@@ -10,8 +10,9 @@ namespace KustoPartitionIngest
 
         public BulkOrchestrator(
             string storageUrl,
-            string tableName,
             string databaseName,
+            string tableName,
+            string partitionKeyColumn,
             string ingestionUri1,
             string ingestionUri2)
         {
@@ -23,7 +24,8 @@ namespace KustoPartitionIngest
                 true,
                 ingestionUri1,
                 databaseName,
-                tableName);
+                tableName,
+                partitionKeyColumn);
             _queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
                 ? null
                 : new QueueManager(
@@ -31,7 +33,8 @@ namespace KustoPartitionIngest
                     false,
                     ingestionUri2,
                     databaseName,
-                    tableName);
+                    tableName,
+                partitionKeyColumn);
         }
 
         public async Task RunAsync()

@@ -4,12 +4,13 @@
     {
         static async Task Main(string[] args)
         {
-            if (args.Length < 4)
+            if (args.Length < 5)
             {
                 Console.Error.WriteLine("Expected CLI parameters:");
                 Console.Error.WriteLine("* Storage root folder");
-                Console.Error.WriteLine("* Kusto Table Name");
                 Console.Error.WriteLine("* Kusto Database Name");
+                Console.Error.WriteLine("* Kusto Table Name");
+                Console.Error.WriteLine("* Partition Key Column Name");
                 Console.Error.WriteLine("* Kusto Ingestion URI");
                 Console.Error.WriteLine();
                 Console.Error.WriteLine("At least one Kusto Ingestion URI is expected");
@@ -21,14 +22,16 @@
             else
             {
                 var storageUrl = args[0];
-                var tableName = args[1];
-                var databaseName = args[2];
-                var ingestionUri1 = args[3];
-                var ingestionUri2 = args.Length >= 5 ? args[4] : string.Empty;
+                var databaseName = args[1];
+                var tableName = args[2];
+                var partitionKeyColumn = args[3];
+                var ingestionUri1 = args[4];
+                var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
                 var orchestrator = new BulkOrchestrator(
                     storageUrl,
-                    tableName,
                     databaseName,
+                    tableName,
+                    partitionKeyColumn,
                     ingestionUri1,
                     ingestionUri2);
 
