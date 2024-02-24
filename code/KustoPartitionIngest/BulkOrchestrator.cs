@@ -1,5 +1,4 @@
-﻿
-using Azure.Identity;
+﻿using Azure.Identity;
 
 namespace KustoPartitionIngest
 {
@@ -16,7 +15,7 @@ namespace KustoPartitionIngest
             string ingestionUri1,
             string ingestionUri2)
         {
-            var credentials = new AzureCliCredential();
+            var credentials = new DefaultAzureCredential(true);
 
             _blobListManager = new BlobListManager(storageUrl);
             _queueManager1 = new QueueManager(
