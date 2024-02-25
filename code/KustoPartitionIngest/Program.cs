@@ -36,8 +36,9 @@
                     ingestionUri2);
 
                 Console.WriteLine($"Storage URL:  {storageUrl}");
-                Console.WriteLine($"Kusto Table Name:  {tableName}");
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");
+                Console.WriteLine($"Kusto Table Name:  {tableName}");
+                Console.WriteLine($"Partition Key Column:  {partitionKeyColumn}");
                 Console.WriteLine($"Ingestion URI 1:  {ingestionUri1}");
                 Console.WriteLine($"Ingestion URI 2:  {ingestionUri2}");
 
