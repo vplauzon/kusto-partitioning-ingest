@@ -73,7 +73,7 @@ namespace KustoPartitionIngest
                             "creationTime",
                             $"{timestamp.Value.Year}-{timestamp.Value.Month}-{timestamp.Value.Day}");
                     }
-                    if (partitionKey != null)
+                    if (partitionKey != null && _hasPartitioningHint)
                     {
                         properties.AdditionalProperties.Add(
                             "dataPartitionValueHint",
