@@ -22,6 +22,7 @@
             else
             {
                 var storageUrl = args[0];
+                var nonSasStorageUrl = storageUrl.Split('?').First();
                 var databaseName = args[1];
                 var tableName = args[2];
                 var partitionKeyColumn = args[3];
@@ -35,12 +36,12 @@
                     ingestionUri1,
                     ingestionUri2);
 
-                Console.WriteLine($"Storage URL:  {storageUrl}");
+                Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");
                 Console.WriteLine($"Kusto Table Name:  {tableName}");
                 Console.WriteLine($"Partition Key Column:  {partitionKeyColumn}");
-                Console.WriteLine($"Ingestion URI 1:  {ingestionUri1}");
-                Console.WriteLine($"Ingestion URI 2:  {ingestionUri2}");
+                Console.WriteLine($"Ingestion URI 1 (with hint):  {ingestionUri1}");
+                Console.WriteLine($"Ingestion URI 2 (without hint):  {ingestionUri2}");
 
                 await orchestrator.RunAsync();
             }
