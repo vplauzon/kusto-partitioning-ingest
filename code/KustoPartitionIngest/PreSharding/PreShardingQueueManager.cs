@@ -1,13 +1,12 @@
 ﻿using Azure.Core;
-using Azure.Identity;
 using Kusto.Data;
 using Kusto.Ingest;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
-namespace KustoPartitionIngest.Partitioning
+namespace KustoPartitionIngest.PreSharding
 {
-    internal class PartitioningQueueManager : IQueueManager
+    internal class PreShardingQueueManager : IQueueManager
     {
         private const int PARALLEL_QUEUING = 32;
 
@@ -21,7 +20,7 @@ namespace KustoPartitionIngest.Partitioning
 
         public event EventHandler? BlobUriQueued;
 
-        public PartitioningQueueManager(
+        public PreShardingQueueManager(
             TokenCredential credentials,
             bool hasPartitioningHint,
             string ingestionUri,
