@@ -4,37 +4,18 @@ namespace KustoPartitionIngest
 {
     internal class BulkOrchestrator
     {
+        private readonly IQueueManager _queueManager1;
+        private readonly IQueueManager? _queueManager2;
         private readonly BlobListManager _blobListManager;
-        private readonly QueueManager _queueManager1;
-        private readonly QueueManager? _queueManager2;
 
         public BulkOrchestrator(
-            string storageUrl,
-            string databaseName,
-            string tableName,
-            string partitionKeyColumn,
-            string ingestionUri1,
-            string ingestionUri2)
+            IQueueManager queueManager1,
+            IQueueManager? queueManager2,
+            string storageUrl)
         {
-            var credentials = new DefaultAzureCredential(true);
-
+            _queueManager1 = queueManager1;
+            _queueManager2 = queueManager2;
             _blobListManager = new BlobListManager(storageUrl);
-            _queueManager1 = new QueueManager(
-                credentials,
-                true,
-                ingestionUri1,
-                databaseName,
-                tableName,
-                partitionKeyColumn);
-            _queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
-                ? null
-                : new QueueManager(
-                    credentials,
-                    false,
-                    ingestionUri2,
-                    databaseName,
-                    tableName,
-                partitionKeyColumn);
         }
 
         public async Task RunAsync()

@@ -1,4 +1,6 @@
-﻿namespace KustoPartitionIngest
+﻿using Azure.Identity;
+
+namespace KustoPartitionIngest
 {
     internal class Program
     {
@@ -38,13 +40,27 @@
                 var partitionKeyColumn = args[4];
                 var ingestionUri1 = args[5];
                 var ingestionUri2 = args.Length >= 7 ? args[6] : string.Empty;
-                var orchestrator = new BulkOrchestrator(
-                    storageUrl,
+                var credentials = new DefaultAzureCredential(true);
+                var queueManager1 = new QueueManager(
+                    credentials,
+                    true,
+                    ingestionUri1,
                     databaseName,
                     tableName,
-                    partitionKeyColumn,
-                    ingestionUri1,
-                    ingestionUri2);
+                    partitionKeyColumn);
+                var queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
+                    ? null
+                    : new QueueManager(
+                        credentials,
+                        false,
+                        ingestionUri2,
+                        databaseName,
+                        tableName,
+                    partitionKeyColumn);
+                var orchestrator = new BulkOrchestrator(
+                    queueManager1,
+                    queueManager2,
+                    storageUrl);
 
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");

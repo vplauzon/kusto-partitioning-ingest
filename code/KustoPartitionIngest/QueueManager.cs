@@ -7,7 +7,7 @@ using System.Collections.Immutable;
 
 namespace KustoPartitionIngest
 {
-    internal class QueueManager
+    internal class QueueManager : IQueueManager
     {
         private const int PARALLEL_QUEUING = 32;
 

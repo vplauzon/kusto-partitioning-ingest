@@ -8,12 +8,12 @@ namespace KustoPartitionIngest
         private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(5);
 
         private readonly BlobListManager _blobListManager;
-        private readonly IImmutableList<QueueManager> _queueManagers;
+        private readonly IImmutableList<IQueueManager> _queueManagers;
         private readonly TaskCompletionSource _completionSource = new();
 
         public ReportManager(
             BlobListManager blobListManager,
-            params QueueManager?[] queueManagers)
+            params IQueueManager?[] queueManagers)
         {
             _blobListManager = blobListManager;
             _queueManagers = queueManagers
