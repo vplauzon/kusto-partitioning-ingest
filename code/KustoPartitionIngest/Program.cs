@@ -1,4 +1,5 @@
 ﻿using Azure.Identity;
+using KustoPartitionIngest.Partitioning;
 
 namespace KustoPartitionIngest
 {
@@ -41,7 +42,7 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[5];
                 var ingestionUri2 = args.Length >= 7 ? args[6] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                var queueManager1 = new QueueManager(
+                var queueManager1 = new PartitioningQueueManager(
                     credentials,
                     true,
                     ingestionUri1,
@@ -50,7 +51,7 @@ namespace KustoPartitionIngest
                     partitionKeyColumn);
                 var queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
                     ? null
-                    : new QueueManager(
+                    : new PartitioningQueueManager(
                         credentials,
                         false,
                         ingestionUri2,

@@ -5,9 +5,9 @@ using Kusto.Ingest;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
-namespace KustoPartitionIngest
+namespace KustoPartitionIngest.Partitioning
 {
-    internal class QueueManager : IQueueManager
+    internal class PartitioningQueueManager : IQueueManager
     {
         private const int PARALLEL_QUEUING = 32;
 
@@ -21,7 +21,7 @@ namespace KustoPartitionIngest
 
         public event EventHandler? BlobUriQueued;
 
-        public QueueManager(
+        public PartitioningQueueManager(
             TokenCredential credentials,
             bool hasPartitioningHint,
             string ingestionUri,
