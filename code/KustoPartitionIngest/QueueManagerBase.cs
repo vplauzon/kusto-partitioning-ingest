@@ -53,19 +53,19 @@ namespace KustoPartitionIngest
 
         protected async Task<Uri?> DequeueBlobUriAsync()
         {
-            if (_isCompleted)
-            {
-                return null;
-            }
-            else if (_blobUris.TryDequeue(out var blobUri))
+            if (_blobUris.TryDequeue(out var blobUri))
             {
                 return blobUri;
             }
-            else
+            else if (!_isCompleted)
             {
                 await Task.Delay(TimeSpan.FromSeconds(1));
 
                 return await DequeueBlobUriAsync();
+            }
+            else
+            {
+                return null;
             }
         }
 

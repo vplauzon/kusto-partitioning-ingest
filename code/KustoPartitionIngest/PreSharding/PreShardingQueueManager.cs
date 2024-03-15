@@ -30,7 +30,7 @@ namespace KustoPartitionIngest.PreSharding
         protected override async Task RunInternalAsync()
         {
             var processTasks = Enumerable.Range(0, PARALLEL_COUNTING)
-                .Select(i => Task.Run(() => ProcessUriAsync()))
+                .Select(i => Task.Run(() => EnrichBlobMetadataAsync()))
                 .ToImmutableArray();
             var allProcessTasks = Task.WhenAll(processTasks);
 
@@ -154,7 +154,7 @@ namespace KustoPartitionIngest.PreSharding
             }
         }
 
-        private async Task ProcessUriAsync()
+        private async Task EnrichBlobMetadataAsync()
         {
             Uri? blobUri;
 
