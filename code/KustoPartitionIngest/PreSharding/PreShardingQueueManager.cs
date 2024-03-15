@@ -1,4 +1,5 @@
 ﻿using Azure.Core;
+using Azure.Identity;
 using Kusto.Data;
 using Kusto.Ingest;
 using System.Collections.Concurrent;
