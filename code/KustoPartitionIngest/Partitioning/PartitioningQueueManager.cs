@@ -6,49 +6,27 @@ using System.Collections.Immutable;
 
 namespace KustoPartitionIngest.Partitioning
 {
-    internal class PartitioningQueueManager : IQueueManager
+    internal class PartitioningQueueManager : QueueManagerBase
     {
         private const int PARALLEL_QUEUING = 32;
 
-        private readonly IKustoQueuedIngestClient _ingestClient;
         private readonly bool _hasPartitioningHint;
-        private readonly string _databaseName;
-        private readonly string _tableName;
         private readonly string _partitionKeyColumn;
-        private readonly ConcurrentQueue<Uri> _blobUris = new();
-        private bool _isCompleted = false;
-
-        public event EventHandler? BlobUriQueued;
 
         public PartitioningQueueManager(
             TokenCredential credentials,
-            bool hasPartitioningHint,
             string ingestionUri,
             string databaseName,
             string tableName,
+            bool hasPartitioningHint,
             string partitionKeyColumn)
+            : base(credentials, ingestionUri, databaseName, tableName)
         {
-            var builder = new KustoConnectionStringBuilder(ingestionUri)
-                .WithAadAzureTokenCredentialsAuthentication(credentials);
-
-            _ingestClient = KustoIngestFactory.CreateQueuedIngestClient(builder);
             _hasPartitioningHint = hasPartitioningHint;
-            _databaseName = databaseName;
-            _tableName = tableName;
             _partitionKeyColumn = partitionKeyColumn;
         }
 
-        public void QueueUri(Uri blobUri)
-        {
-            _blobUris.Enqueue(blobUri);
-        }
-
-        public void Complete()
-        {
-            _isCompleted = true;
-        }
-
-        public async Task RunAsync()
+        protected override async Task RunInternalAsync()
         {
             var processTasks = Enumerable.Range(0, PARALLEL_QUEUING)
                 .Select(i => Task.Run(() => ProcessUriAsync()))
@@ -59,33 +37,27 @@ namespace KustoPartitionIngest.Partitioning
 
         private async Task ProcessUriAsync()
         {
-            while (!_isCompleted || _blobUris.Any())
+            Uri? blobUri;
+
+            while ((blobUri = await DequeueBlobUriAsync()) != null)
             {
-                if (_blobUris.TryDequeue(out var blobUri))
+                (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
+                var properties = CreateIngestionProperties();
+
+                if (timestamp != null)
                 {
-                    (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
-                    var properties = new KustoIngestionProperties(_databaseName, _tableName);
-
-                    if (timestamp != null)
-                    {
-                        properties.AdditionalProperties.Add(
-                            "creationTime",
-                            $"{timestamp.Value.Year}-{timestamp.Value.Month}-{timestamp.Value.Day}");
-                    }
-                    if (partitionKey != null && _hasPartitioningHint)
-                    {
-                        properties.AdditionalProperties.Add(
-                            "dataPartitionValueHint",
-                            $"{{'{_partitionKeyColumn}':'{partitionKey}'}}");
-                    }
-
-                    await _ingestClient.IngestFromStorageAsync($"{blobUri}", properties);
-                    RaiseBlobUriQueued();
+                    properties.AdditionalProperties.Add(
+                        "creationTime",
+                        $"{timestamp.Value.Year}-{timestamp.Value.Month}-{timestamp.Value.Day}");
                 }
-                else
-                {   //  Wait for more blobs
-                    await Task.Delay(TimeSpan.FromSeconds(1));
+                if (partitionKey != null && _hasPartitioningHint)
+                {
+                    properties.AdditionalProperties.Add(
+                        "dataPartitionValueHint",
+                        $"{{'{_partitionKeyColumn}':'{partitionKey}'}}");
                 }
+
+                await IngestFromStorageAsync(blobUri, properties);
             }
         }
 
@@ -138,14 +110,6 @@ namespace KustoPartitionIngest.Partitioning
                 {
                     return null;
                 }
-            }
-        }
-
-        private void RaiseBlobUriQueued()
-        {
-            if (BlobUriQueued != null)
-            {
-                BlobUriQueued(this, EventArgs.Empty);
             }
         }
     }

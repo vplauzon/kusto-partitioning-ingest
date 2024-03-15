@@ -1,5 +1,6 @@
 ﻿using Azure.Identity;
 using KustoPartitionIngest.Partitioning;
+using KustoPartitionIngest.PreSharding;
 
 namespace KustoPartitionIngest
 {
@@ -19,8 +20,11 @@ namespace KustoPartitionIngest
                     {
                         case 'p':
                             await RunPartitioningFlowAsync(args);
+
                             return;
                         case 's':
+                            await RunPreShardingFlowAsync(args);
+
                             return;
                         default:
                             throw new NotSupportedException($"Flow '{flow}' isn't supported");
@@ -32,7 +36,7 @@ namespace KustoPartitionIngest
 
         private static async Task RunPartitioningFlowAsync(string[] args)
         {
-            if (args.Length >= 5)
+            if (args.Length >= 6)
             {
                 var storageUrl = args[1];
                 var nonSasStorageUrl = storageUrl.Split('?').First();
@@ -44,20 +48,20 @@ namespace KustoPartitionIngest
                 var credentials = new DefaultAzureCredential(true);
                 var queueManager1 = new PartitioningQueueManager(
                     credentials,
-                    true,
                     ingestionUri1,
                     databaseName,
                     tableName,
+                    true,
                     partitionKeyColumn);
                 var queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
                     ? null
                     : new PartitioningQueueManager(
                         credentials,
-                        false,
                         ingestionUri2,
                         databaseName,
                         tableName,
-                    partitionKeyColumn);
+                        false,
+                        partitionKeyColumn);
                 var orchestrator = new BulkOrchestrator(
                     queueManager1,
                     queueManager2,
@@ -67,6 +71,41 @@ namespace KustoPartitionIngest
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");
                 Console.WriteLine($"Kusto Table Name:  {tableName}");
                 Console.WriteLine($"Partition Key Column:  {partitionKeyColumn}");
+                Console.WriteLine($"Ingestion URI 1 (with hint):  {ingestionUri1}");
+                Console.WriteLine($"Ingestion URI 2 (without hint):  {ingestionUri2}");
+
+                await orchestrator.RunAsync();
+            }
+            else
+            {
+                DisplayHelp();
+            }
+        }
+
+        private static async Task RunPreShardingFlowAsync(string[] args)
+        {
+            if (args.Length >= 5)
+            {
+                var storageUrl = args[1];
+                var nonSasStorageUrl = storageUrl.Split('?').First();
+                var databaseName = args[2];
+                var tableName = args[3];
+                var ingestionUri1 = args[4];
+                var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
+                var credentials = new DefaultAzureCredential(true);
+                var queueManager1 = new PreShardingQueueManager(
+                    credentials,
+                    ingestionUri1,
+                    databaseName,
+                    tableName);
+                var orchestrator = new BulkOrchestrator(
+                    queueManager1,
+                    null,
+                    storageUrl);
+
+                Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
+                Console.WriteLine($"Kusto Database Name:  {databaseName}");
+                Console.WriteLine($"Kusto Table Name:  {tableName}");
                 Console.WriteLine($"Ingestion URI 1 (with hint):  {ingestionUri1}");
                 Console.WriteLine($"Ingestion URI 2 (without hint):  {ingestionUri2}");
 
