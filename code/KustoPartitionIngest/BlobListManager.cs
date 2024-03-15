@@ -53,11 +53,14 @@ namespace KustoPartitionIngest
 
             await foreach (var item in pageable)
             {
-                var blobName = item.Name;
-                var blobClient = _blobContainer.GetBlobClient(blobName);
-                var blobUri = new Uri($"{blobClient.Uri}{_sasToken}");
+                if (item.Properties.ContentLength > 0)
+                {
+                    var blobName = item.Name;
+                    var blobClient = _blobContainer.GetBlobClient(blobName);
+                    var blobUri = new Uri($"{blobClient.Uri}{_sasToken}");
 
-                RaiseUri(blobUri);
+                    RaiseUri(blobUri);
+                }
             }
         }
 

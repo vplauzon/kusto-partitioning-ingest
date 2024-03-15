@@ -1,7 +1,6 @@
 ﻿using Azure.Core;
-using Kusto.Data;
-using Kusto.Ingest;
-using System.Collections.Concurrent;
+using Azure.Storage.Blobs.Specialized;
+using Parquet;
 using System.Collections.Immutable;
 
 namespace KustoPartitionIngest.PreSharding
@@ -34,6 +33,23 @@ namespace KustoPartitionIngest.PreSharding
 
             while ((blobUri = await DequeueBlobUriAsync()) != null)
             {
+                var rowCount = await FetchParquetRowCountAsync(blobUri);
+            }
+        }
+
+        private static async Task<long> FetchParquetRowCountAsync(Uri blobUri)
+        {
+            var blobClient = new BlockBlobClient(blobUri);
+
+            using (var stream = await blobClient.OpenReadAsync())
+            using (var parquetReader = await ParquetReader.CreateAsync(stream))
+            {
+                if (parquetReader == null || parquetReader.Metadata == null)
+                {
+                    throw new InvalidOperationException("Impossible to read parquet");
+                }
+                
+                return parquetReader.Metadata.NumRows;
             }
         }
     }
