@@ -109,7 +109,8 @@ namespace KustoPartitionIngest.PreSharding
 
             properties.AdditionalProperties.Add(
                 "creationTime",
-                $"{timestamp.Year}-{timestamp.Month}-{timestamp.Day}");
+                $"{timestamp.Year:D2}-{timestamp.Month:D2}-{timestamp.Day:D2} "
+                + $"{timestamp.Hour:D2}:00:00.0000");
             properties.DropByTags = new[] { batchId };
             properties.Format = DataSourceFormat.parquet;
 
