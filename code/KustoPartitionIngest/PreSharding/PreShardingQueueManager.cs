@@ -79,7 +79,7 @@ namespace KustoPartitionIngest.PreSharding
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
             }
-            Console.WriteLine("I'm here");
+            Console.WriteLine("Done queuing normal");
             //  Flush all buckets
             foreach (var pair in aggregationBuckets)
             {
