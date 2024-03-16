@@ -68,6 +68,8 @@ namespace KustoPartitionIngest
                 }
             }
 
+            Console.WriteLine($"Items left:  {_blobUris.Count}");
+
             return uris;
         }
 
@@ -87,15 +89,8 @@ namespace KustoPartitionIngest
             Uri blobUri,
             KustoIngestionProperties properties)
         {
-            try
-            {
             await _ingestClient.IngestFromStorageAsync(blobUri.ToString(), properties);
             RaiseBlobUriQueued();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error at ingestion:  {ex.Message}");
-            }
         }
 
         private void RaiseBlobUriQueued()
