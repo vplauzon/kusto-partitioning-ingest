@@ -66,9 +66,11 @@ namespace KustoPartitionIngest
                 {
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
+                else
+                {
+                    return uris;
+                }
             }
-
-            Console.WriteLine($"Items left:  {_blobUris.Count}");
 
             return uris;
         }
