@@ -8,7 +8,7 @@ using System.Collections.Immutable;
 
 namespace KustoPartitionIngest.PreSharding
 {
-    internal class PreShardingQueueManager : QueueManagerBase
+    internal class PreShardingQueueManager : SparkCreationTimeQueueManagerBase
     {
         #region Inner types
         private record RowCountBlob(Uri blobUri, long rowCount);
@@ -115,55 +115,6 @@ namespace KustoPartitionIngest.PreSharding
             properties.Format = DataSourceFormat.parquet;
 
             await IngestFromStorageAsync(blobUri, properties);
-        }
-
-        private DateTime ExtractTimeFromUri(Uri blobUri)
-        {
-            var parts = blobUri.LocalPath.Split('/');
-            var partitions = parts.TakeLast(5).Take(4);
-            var partitionValues = partitions
-                .Select(p => p.Split('=').Last());
-
-            if (partitions.Count() == 4)
-            {
-                var year = GetInteger(partitionValues.First());
-                var month = GetInteger(partitionValues.Skip(1).First());
-                var day = GetInteger(partitionValues.Skip(2).First());
-                var hour = GetInteger(partitionValues.Skip(3).First());
-                var timestamp = GetTimestamp(year, month, day, hour);
-
-                if (timestamp != null)
-                {
-                    return timestamp.Value;
-                }
-            }
-
-            throw new InvalidDataException(
-                $"Can't extract creation-time from URI '{blobUri}'");
-
-            int? GetInteger(string text)
-            {
-                if (int.TryParse(text, out var value))
-                {
-                    return value;
-                }
-                else
-                {
-                    return null;
-                }
-            }
-
-            DateTime? GetTimestamp(int? year, int? month, int? day, int? hour)
-            {
-                if (year != null && month != null && day != null && hour != null)
-                {
-                    return new DateTime(year.Value, month.Value, day.Value, hour.Value, 0, 0);
-                }
-                else
-                {
-                    return null;
-                }
-            }
         }
 
         private async Task EnrichBlobMetadataAsync()
