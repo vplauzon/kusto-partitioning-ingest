@@ -79,6 +79,7 @@ namespace KustoPartitionIngest.PreSharding
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
             }
+            Console.WriteLine("I'm here");
             //  Flush all buckets
             foreach (var pair in aggregationBuckets)
             {
