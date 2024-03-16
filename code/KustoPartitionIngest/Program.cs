@@ -100,7 +100,7 @@ namespace KustoPartitionIngest
                     tableName);
                 var queueManager2 = new NoShardingQueueManager(
                     credentials,
-                    new Uri(ingestionUri1),
+                    new Uri(ingestionUri2),
                     databaseName,
                     tableName);
                 var orchestrator = new BulkOrchestrator(
