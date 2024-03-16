@@ -14,25 +14,26 @@ namespace KustoPartitionIngest
     {
         private bool _isCompleted = false;
         private readonly ConcurrentQueue<Uri> _blobUris = new();
-        private readonly IKustoQueuedIngestClient IngestClient;
-        private readonly string _databaseName;
+        private readonly IKustoQueuedIngestClient _ingestClient;
         private readonly string _tableName;
 
         public event EventHandler? BlobUriQueued;
 
         protected QueueManagerBase(
             TokenCredential credentials,
-            string ingestionUri,
+            Uri ingestionUri,
             string databaseName,
             string tableName)
         {
-            var builder = new KustoConnectionStringBuilder(ingestionUri)
+            var builder = new KustoConnectionStringBuilder(ingestionUri.ToString())
                 .WithAadAzureTokenCredentialsAuthentication(credentials);
 
-            IngestClient = KustoIngestFactory.CreateQueuedIngestClient(builder);
-            _databaseName = databaseName;
+            _ingestClient = KustoIngestFactory.CreateQueuedIngestClient(builder);
+            DatabaseName = databaseName;
             _tableName = tableName;
         }
+
+        protected string DatabaseName { get; }
 
         public async Task RunAsync()
         {
@@ -51,34 +52,42 @@ namespace KustoPartitionIngest
 
         protected abstract Task RunInternalAsync();
 
+        protected async Task<IEnumerable<Uri>> DequeueBlobUrisAsync(int maxCount)
+        {
+            var uris = new List<Uri>();
+
+            while (uris.Count < maxCount)
+            {
+                if (_blobUris.TryDequeue(out var blobUri))
+                {
+                    uris.Add(blobUri);
+                }
+                else if (!uris.Any() && !_isCompleted)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+            }
+
+            return uris;
+        }
+
         protected async Task<Uri?> DequeueBlobUriAsync()
         {
-            if (_blobUris.TryDequeue(out var blobUri))
-            {
-                return blobUri;
-            }
-            else if (!_isCompleted)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(1));
+            var uris = await DequeueBlobUrisAsync(1);
 
-                return await DequeueBlobUriAsync();
-            }
-            else
-            {
-                return null;
-            }
+            return uris.FirstOrDefault();
         }
 
         protected KustoIngestionProperties CreateIngestionProperties()
         {
-            return new KustoIngestionProperties(_databaseName, _tableName);
+            return new KustoIngestionProperties(DatabaseName, _tableName);
         }
 
         protected async Task IngestFromStorageAsync(
             Uri blobUri,
             KustoIngestionProperties properties)
         {
-            await IngestClient.IngestFromStorageAsync(blobUri.ToString(), properties);
+            await _ingestClient.IngestFromStorageAsync(blobUri.ToString(), properties);
             RaiseBlobUriQueued();
         }
 

@@ -1,7 +1,4 @@
 ﻿using Azure.Core;
-using Kusto.Data;
-using Kusto.Ingest;
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
 namespace KustoPartitionIngest.Partitioning
@@ -15,7 +12,7 @@ namespace KustoPartitionIngest.Partitioning
 
         public PartitioningQueueManager(
             TokenCredential credentials,
-            string ingestionUri,
+            Uri ingestionUri,
             string databaseName,
             string tableName,
             bool hasPartitioningHint,

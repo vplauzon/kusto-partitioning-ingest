@@ -48,7 +48,7 @@ namespace KustoPartitionIngest
                 var credentials = new DefaultAzureCredential(true);
                 var queueManager1 = new PartitioningQueueManager(
                     credentials,
-                    ingestionUri1,
+                    new Uri(ingestionUri1),
                     databaseName,
                     tableName,
                     true,
@@ -57,7 +57,7 @@ namespace KustoPartitionIngest
                     ? null
                     : new PartitioningQueueManager(
                         credentials,
-                        ingestionUri2,
+                        new Uri(ingestionUri2),
                         databaseName,
                         tableName,
                         false,
@@ -95,7 +95,7 @@ namespace KustoPartitionIngest
                 var credentials = new DefaultAzureCredential(true);
                 var queueManager1 = new PreShardingQueueManager(
                     credentials,
-                    ingestionUri1,
+                    new Uri(ingestionUri1),
                     databaseName,
                     tableName);
                 var orchestrator = new BulkOrchestrator(

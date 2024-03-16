@@ -18,8 +18,8 @@
   <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.10.4" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+    <PackageReference Include="Microsoft.Azure.Kusto.Data" Version="12.1.0" />
     <PackageReference Include="Microsoft.Azure.Kusto.Ingest" Version="12.1.0" />
-    <PackageReference Include="Parquet.Net" Version="4.23.4" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Partitioning\" />

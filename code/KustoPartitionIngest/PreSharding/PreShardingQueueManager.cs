@@ -1,7 +1,8 @@
 ﻿using Azure.Core;
-using Azure.Storage.Blobs.Specialized;
+using Kusto.Cloud.Platform.Data;
+using Kusto.Data;
 using Kusto.Data.Common;
-using Parquet;
+using Kusto.Data.Net.Client;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
@@ -14,17 +15,27 @@ namespace KustoPartitionIngest.PreSharding
         #endregion
 
         private const long MAX_ROW_COUNT = 1048576;
-        private const int PARALLEL_COUNTING = 8;
+        private const int PARALLEL_COUNTING = 1;
+        private const int MAX_BLOB_COUNT_COUNTING = 100;
 
         private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
+        private readonly ICslQueryProvider _queryClient;
 
         public PreShardingQueueManager(
             TokenCredential credentials,
-            string ingestionUri,
+            Uri ingestionUri,
             string databaseName,
             string tableName)
             : base(credentials, ingestionUri, databaseName, tableName)
         {
+            var uriBuilder = new UriBuilder(ingestionUri);
+
+            uriBuilder.Host = uriBuilder.Host.Substring("ingest-".Length);
+
+            var connectionBuilder = new KustoConnectionStringBuilder(uriBuilder.ToString())
+                .WithAadAzureTokenCredentialsAuthentication(credentials);
+
+            _queryClient = KustoClientFactory.CreateCslQueryProvider(connectionBuilder);
         }
 
         protected override async Task RunInternalAsync()
@@ -69,11 +80,11 @@ namespace KustoPartitionIngest.PreSharding
                 }
             }
             //  Flush all buckets
-            foreach(var pair in aggregationBuckets)
+            foreach (var pair in aggregationBuckets)
             {
                 var creationTime = pair.Key;
                 var bucket = pair.Value;
-             
+
                 await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobUri));
             }
         }
@@ -156,30 +167,55 @@ namespace KustoPartitionIngest.PreSharding
 
         private async Task EnrichBlobMetadataAsync()
         {
-            Uri? blobUri;
-
-            while ((blobUri = await DequeueBlobUriAsync()) != null)
+            while (true)
             {
-                var rowCount = await FetchParquetRowCountAsync(blobUri);
+                var blobUris = await DequeueBlobUrisAsync(MAX_BLOB_COUNT_COUNTING);
 
-                _rowCountBlobs.Enqueue(new RowCountBlob(blobUri, rowCount));
+                if (blobUris.Any())
+                {
+                    var rowCounts = await FetchParquetRowCountAsync(blobUris);
+                    var enrichedBlobs = blobUris
+                        .Zip(rowCounts, (blobUri, rowCount) => new RowCountBlob(
+                            blobUri,
+                            rowCount));
+
+                    foreach (var b in enrichedBlobs)
+                    {
+                        _rowCountBlobs.Enqueue(b);
+                    }
+                }
+                else
+                {
+                    return;
+                }
             }
         }
 
-        private static async Task<long> FetchParquetRowCountAsync(Uri blobUri)
+        private async Task<IEnumerable<long>> FetchParquetRowCountAsync(
+            IEnumerable<Uri> blobUris)
         {
-            var blobClient = new BlockBlobClient(blobUri);
+            var counter = Enumerable.Range(0, blobUris.Count());
+            var scalars = blobUris
+                .Zip(counter, (uri, i) => new { uri, i })
+                .Select(p => @$"let Count{p.i} = toscalar(externaldata(Timestamp:datetime)
+    [
+        '{p.uri}'
+    ]
+    with (format=""parquet"")
+    | count);");
+            var scalerPrint = counter
+                .Select(i => $"Count{i}");
+            var query = string.Join(Environment.NewLine, scalars)
+                + "print "
+                + string.Join(", ", scalerPrint);
+            var reader = await _queryClient.ExecuteQueryAsync(
+                DatabaseName,
+                query,
+                new ClientRequestProperties());
+            var counts = reader.ToDataSet().Tables[0].Rows[0].ItemArray
+                .Cast<long>();
 
-            using (var stream = await blobClient.OpenReadAsync())
-            using (var parquetReader = await ParquetReader.CreateAsync(stream))
-            {
-                if (parquetReader == null || parquetReader.Metadata == null)
-                {
-                    throw new InvalidOperationException("Impossible to read parquet");
-                }
-
-                return parquetReader.Metadata.NumRows;
-            }
+            return counts;
         }
     }
 }
