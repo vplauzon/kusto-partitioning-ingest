@@ -15,7 +15,7 @@ namespace KustoPartitionIngest.PreSharding
         #endregion
 
         private const long MAX_ROW_COUNT = 1048576;
-        private const int PARALLEL_COUNTING = 1;
+        private const int PARALLEL_COUNTING = 10;
         private const int MAX_BLOB_COUNT_COUNTING = 100;
 
         private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
