@@ -31,7 +31,8 @@ namespace KustoPartitionIngest.PreSharding
                 var year = GetInteger(partitionValues.First());
                 var month = GetInteger(partitionValues.Skip(1).First());
                 var day = GetInteger(partitionValues.Skip(2).First());
-                var hour = GetInteger(partitionValues.Skip(3).First());
+                var hour = 0;
+                //var hour = GetInteger(partitionValues.Skip(3).First());
                 var timestamp = GetTimestamp(year, month, day, hour);
 
                 if (timestamp != null)
