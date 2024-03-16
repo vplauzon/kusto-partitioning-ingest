@@ -93,15 +93,19 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[4];
                 var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                //var queueManager1 = new PreShardingQueueManager(
-                var queueManager1 = new NoShardingQueueManager(
+                var queueManager1 = new PreShardingQueueManager(
+                    credentials,
+                    new Uri(ingestionUri1),
+                    databaseName,
+                    tableName);
+                var queueManager2 = new NoShardingQueueManager(
                     credentials,
                     new Uri(ingestionUri1),
                     databaseName,
                     tableName);
                 var orchestrator = new BulkOrchestrator(
                     queueManager1,
-                    null,
+                    queueManager2,
                     storageUrl);
 
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
