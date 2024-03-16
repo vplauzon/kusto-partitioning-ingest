@@ -93,7 +93,8 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[4];
                 var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                var queueManager1 = new PreShardingQueueManager(
+                //var queueManager1 = new PreShardingQueueManager(
+                var queueManager1 = new NoShardingQueueManager(
                     credentials,
                     new Uri(ingestionUri1),
                     databaseName,
