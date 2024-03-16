@@ -106,8 +106,8 @@ namespace KustoPartitionIngest
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
                 Console.WriteLine($"Kusto Database Name:  {databaseName}");
                 Console.WriteLine($"Kusto Table Name:  {tableName}");
-                Console.WriteLine($"Ingestion URI 1 (with hint):  {ingestionUri1}");
-                Console.WriteLine($"Ingestion URI 2 (without hint):  {ingestionUri2}");
+                Console.WriteLine($"Ingestion URI 1 (with pre-sharding):  {ingestionUri1}");
+                Console.WriteLine($"Ingestion URI 2 (without):  {ingestionUri2}");
 
                 await orchestrator.RunAsync();
             }
