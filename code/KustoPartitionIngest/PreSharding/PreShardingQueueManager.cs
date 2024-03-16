@@ -45,11 +45,11 @@ namespace KustoPartitionIngest.PreSharding
                 .ToImmutableArray();
             var allProcessTasks = Task.WhenAll(processTasks);
 
-            await ProcessRowCountBlobsAsync(allProcessTasks);
+            await ProcessEnrichedBlobsAsync(allProcessTasks);
             await allProcessTasks;
         }
 
-        private async Task ProcessRowCountBlobsAsync(Task allProcessTasks)
+        private async Task ProcessEnrichedBlobsAsync(Task allProcessTasks)
         {
             var aggregationBuckets = new Dictionary<DateTime, List<RowCountBlob>>();
 
@@ -187,6 +187,8 @@ namespace KustoPartitionIngest.PreSharding
                 }
                 else
                 {
+                    Console.WriteLine("Done enriching");
+
                     return;
                 }
             }
