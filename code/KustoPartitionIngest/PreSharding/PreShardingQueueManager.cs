@@ -20,6 +20,7 @@ namespace KustoPartitionIngest.PreSharding
 
         private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
         private readonly ICslQueryProvider _queryClient;
+        private volatile int _enrichedBlobCount = 0;
 
         public PreShardingQueueManager(
             string name,
@@ -49,6 +50,13 @@ namespace KustoPartitionIngest.PreSharding
 
             await ProcessEnrichedBlobsAsync(allProcessTasks);
             await allProcessTasks;
+        }
+
+        protected override IImmutableDictionary<string, string> AlterReported(
+            IImmutableDictionary<string, string> reported)
+        {
+            return reported
+                .Add("Enriched", _enrichedBlobCount.ToString());
         }
 
         private async Task ProcessEnrichedBlobsAsync(Task allProcessTasks)
@@ -91,22 +99,9 @@ namespace KustoPartitionIngest.PreSharding
             }
         }
 
-        private async Task IngestBlobsAsync(
-            DateTime creationTime,
-            IEnumerable<Uri> batchBlobUris)
+        private async Task IngestBlobsAsync(DateTime timestamp, IEnumerable<Uri> batchBlobUris)
         {
             var batchId = Guid.NewGuid().ToString();
-
-            await Task.WhenAll(batchBlobUris
-                .Select(b => IngestBlobAsync(creationTime, b, batchId)));
-        }
-
-        private async Task IngestBlobAsync(
-            DateTime creationTime,
-            Uri blobUri,
-            string batchId)
-        {
-            var timestamp = ExtractTimeFromUri(blobUri);
             var properties = CreateIngestionProperties();
 
             properties.AdditionalProperties.Add(
@@ -116,7 +111,11 @@ namespace KustoPartitionIngest.PreSharding
             properties.DropByTags = new[] { batchId };
             properties.Format = DataSourceFormat.parquet;
 
-            await IngestFromStorageAsync(blobUri, properties);
+            var ingestTasks = batchBlobUris
+                .Select(uri => IngestFromStorageAsync(uri, properties))
+                .ToImmutableArray();
+
+            await Task.WhenAll(ingestTasks);
         }
 
         private async Task EnrichBlobMetadataAsync()
@@ -137,6 +136,7 @@ namespace KustoPartitionIngest.PreSharding
                     foreach (var b in enrichedBlobs)
                     {
                         _rowCountBlobs.Enqueue(b);
+                        Interlocked.Increment(ref _enrichedBlobCount);
                     }
                 }
                 else
