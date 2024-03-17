@@ -136,8 +136,8 @@ namespace KustoPartitionIngest.PreSharding
                     foreach (var b in enrichedBlobs)
                     {
                         _rowCountBlobs.Enqueue(b);
-                        Interlocked.Increment(ref _enrichedBlobCount);
                     }
+                    Interlocked.Add(ref _enrichedBlobCount, enrichedBlobs.Count());
                 }
                 else
                 {
