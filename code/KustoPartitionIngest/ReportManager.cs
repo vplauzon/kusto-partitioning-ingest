@@ -7,49 +7,36 @@ namespace KustoPartitionIngest
     {
         private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(5);
 
-        private readonly BlobListManager _blobListManager;
-        private readonly IImmutableList<IQueueManager> _queueManagers;
-        private readonly TaskCompletionSource _completionSource = new();
+        private readonly IImmutableList<IReportable> _reportables;
 
-        public ReportManager(
-            BlobListManager blobListManager,
-            params IQueueManager?[] queueManagers)
+        public ReportManager(params IReportable?[] reportables)
         {
-            _blobListManager = blobListManager;
-            _queueManagers = queueManagers
-                .Where(q => q != null)
+            _reportables = reportables
+                .Where(r => r != null)
                 .ToImmutableArray();
         }
 
-        public void Complete()
+        public async Task RunAsync(Task dependantTask)
         {
-            _completionSource.SetResult();
+            while (!dependantTask.IsCompleted)
+            {
+                await Task.WhenAny(dependantTask, Task.Delay(PERIOD));
+
+                Report();
+            }
+            Report();
         }
 
-        public async Task RunAsync()
+        private void Report()
         {
-            var listCount = 0;
-            var queueCounts = new int[_queueManagers.Count];
+            foreach (var reportable in _reportables)
+            {
+                var report = reportable.GetReport();
+                var values = report
+                    .Select(p => $"{p.Key} ({p.Value})");
+                var text = string.Join(", ", values);
 
-            _blobListManager.UriDiscovered += (sender, blobUri) =>
-            {
-                Interlocked.Increment(ref listCount);
-            };
-            for (int i = 0; i != queueCounts.Length; ++i)
-            {
-                var index = i;
-
-                _queueManagers[i].BlobUriQueued += (sender, e) =>
-                {
-                    Interlocked.Increment(ref queueCounts[index]);
-                };
-            }
-            while (!_completionSource.Task.IsCompleted)
-            {
-                await Task.WhenAny(_completionSource.Task, Task.Delay(PERIOD));
-                Console.WriteLine($"Queued:  {string.Join(", ", queueCounts)}");
-                Console.WriteLine($"Discovered:  {listCount}");
-                Console.WriteLine();
+                Console.WriteLine($"{reportable.Name}:  {text}");
             }
         }
     }

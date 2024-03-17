@@ -1,15 +1,16 @@
 ﻿using Azure;
 using Azure.Storage.Blobs;
+using Kusto.Cloud.Platform.Utils;
+using System.Collections.Immutable;
 
 namespace KustoPartitionIngest
 {
-    internal class BlobListManager
+    internal class BlobListManager : IReportable
     {
         private readonly BlobContainerClient _blobContainer;
         private readonly string _sasToken;
         private readonly string _prefix;
-
-        public event EventHandler<Uri>? UriDiscovered;
+        private volatile int _discoveredCount = 0;
 
         #region Constructors
         public BlobListManager(string storageUrl)
@@ -47,8 +48,9 @@ namespace KustoPartitionIngest
         }
         #endregion
 
-        public async Task ListBlobsAsync()
+        public async Task<IImmutableList<BlobEntry>> ListBlobsAsync()
         {
+            var list = new List<BlobEntry>();
             var pageable = _blobContainer.GetBlobsAsync(prefix: _prefix);
 
             await foreach (var item in pageable)
@@ -59,17 +61,23 @@ namespace KustoPartitionIngest
                     var blobClient = _blobContainer.GetBlobClient(blobName);
                     var blobUri = new Uri($"{blobClient.Uri}{_sasToken}");
 
-                    RaiseUri(blobUri);
+                    list.Add(new BlobEntry(blobUri, item.Properties.ContentLength.Value));
+                    Interlocked.Increment(ref _discoveredCount);
                 }
             }
+
+            return list.ToImmutableArray();
         }
 
-        private void RaiseUri(Uri blobUri)
+        #region IReportable Implementation
+        string IReportable.Name => "Blob List Manager";
+
+        IImmutableDictionary<string, string> IReportable.GetReport()
         {
-            if (UriDiscovered != null)
-            {
-                UriDiscovered(this, blobUri);
-            }
+            return ImmutableDictionary<string, string>
+                .Empty
+                .Add("Discovered", _discoveredCount.ToString());
         }
+        #endregion
     }
 }

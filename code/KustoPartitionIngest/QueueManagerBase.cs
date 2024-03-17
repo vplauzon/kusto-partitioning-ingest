@@ -4,22 +4,23 @@ using Kusto.Ingest;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace KustoPartitionIngest
 {
     public abstract class QueueManagerBase : IQueueManager
     {
-        private bool _isCompleted = false;
-        private readonly ConcurrentQueue<Uri> _blobUris = new();
+        private readonly string _name;
+        private readonly ConcurrentQueue<BlobEntry> _blobs;
         private readonly IKustoQueuedIngestClient _ingestClient;
         private readonly string _tableName;
-
-        public event EventHandler? BlobUriQueued;
+        private volatile int _queuedCount = 0;
 
         protected QueueManagerBase(
+            string name,
+            IEnumerable<BlobEntry> blobList,
             TokenCredential credentials,
             Uri ingestionUri,
             string databaseName,
@@ -28,6 +29,8 @@ namespace KustoPartitionIngest
             var builder = new KustoConnectionStringBuilder(ingestionUri.ToString())
                 .WithAadAzureTokenCredentialsAuthentication(credentials);
 
+            _name = name;
+            _blobs = new(blobList);
             _ingestClient = KustoIngestFactory.CreateQueuedIngestClient(builder);
             DatabaseName = databaseName;
             _tableName = tableName;
@@ -35,51 +38,42 @@ namespace KustoPartitionIngest
 
         protected string DatabaseName { get; }
 
-        public async Task RunAsync()
+        #region IReportable
+        string IReportable.Name => _name;
+
+        IImmutableDictionary<string, string> IReportable.GetReport()
+        {
+            return AlterReported(ImmutableDictionary<string, string>
+                .Empty
+                .Add("Queued", _queuedCount.ToString()));
+        }
+        #endregion
+
+        #region IQueueManager
+        async Task IQueueManager.RunAsync()
         {
             await RunInternalAsync();
         }
+        #endregion
 
-        public void QueueUri(Uri blobUri)
+        protected virtual IImmutableDictionary<string, string> AlterReported(
+            IImmutableDictionary<string, string> reported)
         {
-            _blobUris.Enqueue(blobUri);
-        }
-
-        public void Complete()
-        {
-            _isCompleted = true;
+            return reported;
         }
 
         protected abstract Task RunInternalAsync();
 
-        protected async Task<IEnumerable<Uri>> DequeueBlobUrisAsync(int maxCount)
+        protected BlobEntry? DequeueBlobEntry()
         {
-            var uris = new List<Uri>();
-
-            while (uris.Count < maxCount)
+            if (_blobs.TryDequeue(out var blob))
             {
-                if (_blobUris.TryDequeue(out var blobUri))
-                {
-                    uris.Add(blobUri);
-                }
-                else if (!uris.Any() && !_isCompleted)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(1));
-                }
-                else
-                {
-                    return uris;
-                }
+                return blob;
             }
-
-            return uris;
-        }
-
-        protected async Task<Uri?> DequeueBlobUriAsync()
-        {
-            var uris = await DequeueBlobUrisAsync(1);
-
-            return uris.FirstOrDefault();
+            else
+            {
+                return null;
+            }
         }
 
         protected KustoIngestionProperties CreateIngestionProperties()
@@ -92,15 +86,7 @@ namespace KustoPartitionIngest
             KustoIngestionProperties properties)
         {
             await _ingestClient.IngestFromStorageAsync(blobUri.ToString(), properties);
-            RaiseBlobUriQueued();
-        }
-
-        private void RaiseBlobUriQueued()
-        {
-            if (BlobUriQueued != null)
-            {
-                BlobUriQueued(this, EventArgs.Empty);
-            }
+            Interlocked.Increment(ref _queuedCount);
         }
     }
 }

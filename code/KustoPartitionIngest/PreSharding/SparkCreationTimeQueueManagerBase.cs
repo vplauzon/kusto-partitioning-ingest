@@ -11,11 +11,13 @@ namespace KustoPartitionIngest.PreSharding
     internal abstract class SparkCreationTimeQueueManagerBase : QueueManagerBase
     {
         protected SparkCreationTimeQueueManagerBase(
+            string name,
+            IEnumerable<BlobEntry> blobList,
             TokenCredential credentials,
             Uri ingestionUri,
             string databaseName,
             string tableName)
-            : base(credentials, ingestionUri, databaseName, tableName)
+            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
         {
         }
 

@@ -1,14 +1,10 @@
 ﻿
+using System.Collections.Immutable;
+
 namespace KustoPartitionIngest
 {
-    internal interface IQueueManager
+    internal interface IQueueManager : IReportable
     {
-        event EventHandler? BlobUriQueued;
-
         Task RunAsync();
-        
-        void QueueUri(Uri blobUri);
-
-        void Complete();
     }
 }

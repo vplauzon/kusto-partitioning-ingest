@@ -13,11 +13,13 @@ namespace KustoPartitionIngest.PreSharding
         private const int PARALLEL_QUEUING = 32;
 
         public NoShardingQueueManager(
+            string name,
+            IEnumerable<BlobEntry> blobList,
             TokenCredential credentials,
             Uri ingestionUri,
             string databaseName,
             string tableName)
-            : base(credentials, ingestionUri, databaseName, tableName)
+            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
         {
         }
 
@@ -32,11 +34,11 @@ namespace KustoPartitionIngest.PreSharding
 
         private async Task ProcessUriAsync()
         {
-            Uri? blobUri;
+            BlobEntry? blobEntry;
 
-            while ((blobUri = await DequeueBlobUriAsync()) != null)
+            while ((blobEntry = DequeueBlobEntry()) != null)
             {
-                var timestamp = ExtractTimeFromUri(blobUri);
+                var timestamp = ExtractTimeFromUri(blobEntry.uri);
                 var properties = CreateIngestionProperties();
 
                 properties.AdditionalProperties.Add(
@@ -45,7 +47,7 @@ namespace KustoPartitionIngest.PreSharding
                     + $"{timestamp.Hour:D2}:00:00.0000");
                 properties.Format = DataSourceFormat.parquet;
 
-                await IngestFromStorageAsync(blobUri, properties);
+                await IngestFromStorageAsync(blobEntry.uri, properties);
             }
         }
     }

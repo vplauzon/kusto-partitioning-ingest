@@ -11,13 +11,15 @@ namespace KustoPartitionIngest.Partitioning
         private readonly string _partitionKeyColumn;
 
         public PartitioningQueueManager(
+            string name,
+            IEnumerable<BlobEntry> blobList,
             TokenCredential credentials,
             Uri ingestionUri,
             string databaseName,
             string tableName,
             bool hasPartitioningHint,
             string partitionKeyColumn)
-            : base(credentials, ingestionUri, databaseName, tableName)
+            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
         {
             _hasPartitioningHint = hasPartitioningHint;
             _partitionKeyColumn = partitionKeyColumn;
@@ -34,11 +36,11 @@ namespace KustoPartitionIngest.Partitioning
 
         private async Task ProcessUriAsync()
         {
-            Uri? blobUri;
+            BlobEntry? blobEntry;
 
-            while ((blobUri = await DequeueBlobUriAsync()) != null)
+            while ((blobEntry = DequeueBlobEntry()) != null)
             {
-                (var timestamp, var partitionKey) = AnalyzeUri(blobUri);
+                (var timestamp, var partitionKey) = AnalyzeUri(blobEntry.uri);
                 var properties = CreateIngestionProperties();
 
                 if (timestamp != null)
@@ -54,7 +56,7 @@ namespace KustoPartitionIngest.Partitioning
                         $"{{'{_partitionKeyColumn}':'{partitionKey}'}}");
                 }
 
-                await IngestFromStorageAsync(blobUri, properties);
+                await IngestFromStorageAsync(blobEntry.uri, properties);
             }
         }
 

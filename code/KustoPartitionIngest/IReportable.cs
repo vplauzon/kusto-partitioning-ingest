@@ -9,6 +9,8 @@ namespace KustoPartitionIngest
 {
     internal interface IReportable
     {
+        string Name { get; }
+
         IImmutableDictionary<string, string> GetReport();
     }
 }

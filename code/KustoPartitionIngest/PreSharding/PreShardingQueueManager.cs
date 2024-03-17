@@ -11,7 +11,7 @@ namespace KustoPartitionIngest.PreSharding
     internal class PreShardingQueueManager : SparkCreationTimeQueueManagerBase
     {
         #region Inner types
-        private record RowCountBlob(Uri blobUri, long rowCount);
+        private record RowCountBlob(BlobEntry blobEntry, long rowCount);
         #endregion
 
         private const long MAX_ROW_COUNT = 1048576;
@@ -22,11 +22,13 @@ namespace KustoPartitionIngest.PreSharding
         private readonly ICslQueryProvider _queryClient;
 
         public PreShardingQueueManager(
+            string name,
+            IEnumerable<BlobEntry> blobList,
             TokenCredential credentials,
             Uri ingestionUri,
             string databaseName,
             string tableName)
-            : base(credentials, ingestionUri, databaseName, tableName)
+            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
         {
             var uriBuilder = new UriBuilder(ingestionUri);
 
@@ -57,7 +59,7 @@ namespace KustoPartitionIngest.PreSharding
             {
                 if (_rowCountBlobs.TryDequeue(out var blob))
                 {
-                    var creationTime = ExtractTimeFromUri(blob.blobUri);
+                    var creationTime = ExtractTimeFromUri(blob.blobEntry.uri);
 
                     if (!aggregationBuckets.ContainsKey(creationTime))
                     {
@@ -69,7 +71,7 @@ namespace KustoPartitionIngest.PreSharding
                     if (bucket.Sum(i => i.rowCount) + blob.rowCount > MAX_ROW_COUNT
                         && bucket.Any())
                     {
-                        await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobUri));
+                        await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobEntry.uri));
                         bucket.Clear();
                     }
                     bucket.Add(blob);
@@ -85,7 +87,7 @@ namespace KustoPartitionIngest.PreSharding
                 var creationTime = pair.Key;
                 var bucket = pair.Value;
 
-                await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobUri));
+                await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobEntry.uri));
             }
         }
 
@@ -121,14 +123,15 @@ namespace KustoPartitionIngest.PreSharding
         {
             while (true)
             {
-                var blobUris = await DequeueBlobUrisAsync(MAX_BLOB_COUNT_COUNTING);
+                var blobEntries = DequeueBlobEntries();
 
-                if (blobUris.Any())
+                if (blobEntries.Any())
                 {
-                    var rowCounts = await FetchParquetRowCountAsync(blobUris);
-                    var enrichedBlobs = blobUris
-                        .Zip(rowCounts, (blobUri, rowCount) => new RowCountBlob(
-                            blobUri,
+                    var rowCounts = await FetchParquetRowCountAsync(blobEntries
+                        .Select(e => e.uri));
+                    var enrichedBlobs = blobEntries
+                        .Zip(rowCounts, (entry, rowCount) => new RowCountBlob(
+                            entry,
                             rowCount));
 
                     foreach (var b in enrichedBlobs)
@@ -141,6 +144,27 @@ namespace KustoPartitionIngest.PreSharding
                     return;
                 }
             }
+        }
+
+        private IImmutableList<BlobEntry> DequeueBlobEntries()
+        {
+            var list = new List<BlobEntry>(MAX_BLOB_COUNT_COUNTING);
+
+            while (list.Count() < MAX_BLOB_COUNT_COUNTING)
+            {
+                var blobEntry = DequeueBlobEntry();
+
+                if (blobEntry == null)
+                {
+                    break;
+                }
+                else
+                {
+                    list.Add(blobEntry);
+                }
+            }
+
+            return list.ToImmutableArray();
         }
 
         private async Task<IEnumerable<long>> FetchParquetRowCountAsync(

@@ -46,25 +46,27 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[5];
                 var ingestionUri2 = args.Length >= 7 ? args[6] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                var queueManager1 = new PartitioningQueueManager(
-                    credentials,
-                    new Uri(ingestionUri1),
-                    databaseName,
-                    tableName,
-                    true,
-                    partitionKeyColumn);
-                var queueManager2 = string.IsNullOrWhiteSpace(ingestionUri2)
+                var orchestrator = new BulkOrchestrator(
+                    list => new PartitioningQueueManager(
+                        "Queue1",
+                        list,
+                        credentials,
+                        new Uri(ingestionUri1),
+                        databaseName,
+                        tableName,
+                        true,
+                        partitionKeyColumn),
+                    list => string.IsNullOrWhiteSpace(ingestionUri2)
                     ? null
                     : new PartitioningQueueManager(
+                        "Queue2",
+                        list,
                         credentials,
                         new Uri(ingestionUri2),
                         databaseName,
                         tableName,
                         false,
-                        partitionKeyColumn);
-                var orchestrator = new BulkOrchestrator(
-                    queueManager1,
-                    queueManager2,
+                        partitionKeyColumn),
                     storageUrl);
 
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
@@ -93,19 +95,23 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[4];
                 var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                var queueManager1 = new PreShardingQueueManager(
-                    credentials,
-                    new Uri(ingestionUri1),
-                    databaseName,
-                    tableName);
-                var queueManager2 = new NoShardingQueueManager(
-                    credentials,
-                    new Uri(ingestionUri2),
-                    databaseName,
-                    tableName);
                 var orchestrator = new BulkOrchestrator(
-                    queueManager1,
-                    queueManager2,
+                    list => new PreShardingQueueManager(
+                        "Queue1",
+                        list,
+                        credentials,
+                        new Uri(ingestionUri1),
+                        databaseName,
+                        tableName),
+                    list => string.IsNullOrWhiteSpace(ingestionUri2)
+                    ? null
+                    : new NoShardingQueueManager(
+                        "Queue2",
+                        list,
+                        credentials,
+                        new Uri(ingestionUri2),
+                        databaseName,
+                        tableName),
                     storageUrl);
 
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
