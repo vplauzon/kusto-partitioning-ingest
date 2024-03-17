@@ -111,7 +111,7 @@ namespace KustoPartitionIngest.PreSharding
             properties.DropByTags = new[] { batchId };
             properties.Format = DataSourceFormat.parquet;
 
-            var ingestTasks = batchBlobUris
+           var ingestTasks = batchBlobUris
                 .Select(uri => IngestFromStorageAsync(uri, properties))
                 .ToImmutableArray();
 
