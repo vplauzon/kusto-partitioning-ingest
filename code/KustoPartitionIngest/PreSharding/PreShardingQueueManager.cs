@@ -12,9 +12,12 @@ namespace KustoPartitionIngest.PreSharding
     {
         #region Inner types
         private record RowCountBlob(BlobEntry blobEntry, long rowCount);
+
+        private record AggregationBucket(List<RowCountBlob> blobs, int lastWholeShardLength);
         #endregion
 
-        private const long MAX_ROW_COUNT = 1048576;
+        private const long SHARD_ROW_COUNT = 1048576;
+        private const long BATCH_SIZE = 1000 * 1000 * 1000;
         private const int PARALLEL_COUNTING = 15;
         private const int MAX_BLOB_COUNT_COUNTING = 100;
 
@@ -46,10 +49,10 @@ namespace KustoPartitionIngest.PreSharding
             var processTasks = Enumerable.Range(0, PARALLEL_COUNTING)
                 .Select(i => Task.Run(() => EnrichBlobMetadataAsync()))
                 .ToImmutableArray();
-            var allProcessTasks = Task.WhenAll(processTasks);
+            var enrichTask = Task.WhenAll(processTasks);
 
-            await ProcessEnrichedBlobsAsync(allProcessTasks);
-            await allProcessTasks;
+            await ProcessEnrichedBlobsAsync(enrichTask);
+            await enrichTask;
         }
 
         protected override IImmutableDictionary<string, string> AlterReported(
@@ -59,11 +62,11 @@ namespace KustoPartitionIngest.PreSharding
                 .Add("Enriched", _enrichedBlobCount.ToString());
         }
 
-        private async Task ProcessEnrichedBlobsAsync(Task allProcessTasks)
+        private async Task ProcessEnrichedBlobsAsync(Task enrichTask)
         {
-            var aggregationBuckets = new Dictionary<DateTime, List<RowCountBlob>>();
+            var aggregationBuckets = new Dictionary<DateTime, AggregationBucket>();
 
-            while (!allProcessTasks.IsCompleted || _rowCountBlobs.Any())
+            while (!enrichTask.IsCompleted || _rowCountBlobs.Any())
             {
                 if (_rowCountBlobs.TryDequeue(out var blob))
                 {
@@ -71,18 +74,42 @@ namespace KustoPartitionIngest.PreSharding
 
                     if (!aggregationBuckets.ContainsKey(creationTime))
                     {
-                        aggregationBuckets[creationTime] = new();
+                        aggregationBuckets[creationTime] = new AggregationBucket(
+                            new List<RowCountBlob>(),
+                            0);
                     }
 
                     var bucket = aggregationBuckets[creationTime];
+                    var sizeBefore = bucket.blobs.Sum(i => i.blobEntry.size);
+                    var sizeAfter = sizeBefore + blob.blobEntry.size;
 
-                    if (bucket.Sum(i => i.rowCount) + blob.rowCount > MAX_ROW_COUNT
-                        && bucket.Any())
-                    {
-                        await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobEntry.uri));
-                        bucket.Clear();
+                    if (sizeAfter > BATCH_SIZE)
+                    {   //  We ingest up to the last whole shard index
+                        if (bucket.lastWholeShardLength == 0)
+                        {
+                            throw new NotSupportedException(
+                                "Bigger than batch size blob aren't supported");
+                        }
+                        await IngestBlobsAsync(
+                            creationTime,
+                            bucket.blobs
+                            .Take(bucket.lastWholeShardLength)
+                            .Select(i => i.blobEntry.uri));
+                        bucket.blobs.RemoveRange(0, bucket.lastWholeShardLength);
+                        bucket = bucket with { lastWholeShardLength = 0 };
                     }
-                    bucket.Add(blob);
+
+                    var rowsBefore = bucket.blobs.Sum(i => i.rowCount);
+                    var rowsAfter = rowsBefore + blob.rowCount;
+                    var shardCountBefore = rowsBefore / SHARD_ROW_COUNT;
+                    var shardCountAfter = rowsAfter / SHARD_ROW_COUNT;
+
+                    if (shardCountBefore != shardCountAfter)
+                    {
+                        bucket = bucket with { lastWholeShardLength = bucket.blobs.Count() };
+                    }
+                    bucket.blobs.Add(blob);
+                    aggregationBuckets[creationTime] = bucket;
                 }
                 else
                 {
@@ -95,7 +122,7 @@ namespace KustoPartitionIngest.PreSharding
                 var creationTime = pair.Key;
                 var bucket = pair.Value;
 
-                await IngestBlobsAsync(creationTime, bucket.Select(i => i.blobEntry.uri));
+                await IngestBlobsAsync(creationTime, bucket.blobs.Select(i => i.blobEntry.uri));
             }
         }
 
@@ -111,9 +138,9 @@ namespace KustoPartitionIngest.PreSharding
             properties.DropByTags = new[] { batchId };
             properties.Format = DataSourceFormat.parquet;
 
-           var ingestTasks = batchBlobUris
-                .Select(uri => IngestFromStorageAsync(uri, properties))
-                .ToImmutableArray();
+            var ingestTasks = batchBlobUris
+                 .Select(uri => IngestFromStorageAsync(uri, properties))
+                 .ToImmutableArray();
 
             await Task.WhenAll(ingestTasks);
         }
