@@ -38,11 +38,25 @@ namespace KustoPartitionIngest
         #endregion
 
         #region IIngestionManager
-        Task IIngestionManager.QueueIngestionAsync(
+        async Task IIngestionManager.QueueIngestionAsync(
             IEnumerable<Uri> blobUris,
             DateTime? creationTime)
         {
-            throw new NotImplementedException();
+            var properties = new KustoIngestionProperties();
+
+            if (creationTime != null)
+            {
+                var time = creationTime.Value;
+
+                properties.AdditionalProperties.Add(
+                    "creationTime",
+                    $"{time.Year:D2}-{time.Month:D2}-{time.Day:D2} "
+                    + $"{time.Hour:D2}:{time.Minute:D2}:{time.Second:D2}.{time.Millisecond:D4}");
+            }
+            var ingestTasks = blobUris
+                .Select(b => _ingestClient.IngestFromStorageAsync(b.ToString(), properties));
+
+            await Task.WhenAll(ingestTasks);
         }
         #endregion
     }
