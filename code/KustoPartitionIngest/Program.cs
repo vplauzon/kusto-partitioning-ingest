@@ -1,7 +1,5 @@
 ﻿using Azure.Identity;
-using Kusto.Data;
 using Kusto.Data.Common;
-using Kusto.Data.Net.Client;
 using KustoPartitionIngest.Partitioning;
 using KustoPartitionIngest.PreSharding;
 
@@ -102,25 +100,16 @@ namespace KustoPartitionIngest
                 var ingestionUri1 = args[4];
                 var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
                 var credentials = new DefaultAzureCredential(true);
-                var uriBuilder1 = new UriBuilder(ingestionUri1);
-
-                uriBuilder1.Host = uriBuilder1.Host.Substring("ingest-".Length);
-
-                var connectionBuilder = new KustoConnectionStringBuilder(uriBuilder1.ToString())
-                    .WithAadAzureTokenCredentialsAuthentication(credentials);
-
                 var orchestrator = new BulkOrchestrator(
                     list => new PreShardingQueueManager(
                         "Queue1",
                         list,
-                        new DmBackedIngestionManager(
+                        new InProcIngestionManager(
                             credentials,
                             new Uri(ingestionUri1),
                             databaseName,
                             tableName,
-                            DataSourceFormat.parquet),
-                        KustoClientFactory.CreateCslQueryProvider(connectionBuilder),
-                        databaseName),
+                            DataSourceFormat.parquet)),
                     list => string.IsNullOrWhiteSpace(ingestionUri2)
                     ? null
                     : new NoShardingQueueManager(
