@@ -5,13 +5,14 @@ using Kusto.Data.Net.Client;
 using Kusto.Ingest;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace KustoPartitionIngest
 {
-    internal class InProcIngestionManager
+    internal class InProcIngestionManager : IAsyncDisposable
     {
         private readonly string _tableName;
         private readonly DataSourceFormat _format;
@@ -43,7 +44,7 @@ namespace KustoPartitionIngest
         public ICslQueryProvider QueryClient { get; }
 
         public int QueueCount => _queuedCount;
-        
+
         public int IngestedCount => _ingestedCount;
 
         public void QueueIngestion(
@@ -51,7 +52,18 @@ namespace KustoPartitionIngest
             DateTime? creationTime,
             params (string key, string value)[] properties)
         {
+            var uris = blobUris.ToImmutableArray();
+
+            Interlocked.Add(ref _queuedCount, uris.Length);
+
             throw new NotImplementedException();
         }
+
+        #region IAsyncDisposable
+        ValueTask IAsyncDisposable.DisposeAsync()
+        {
+            throw new NotImplementedException();
+        }
+        #endregion
     }
 }
