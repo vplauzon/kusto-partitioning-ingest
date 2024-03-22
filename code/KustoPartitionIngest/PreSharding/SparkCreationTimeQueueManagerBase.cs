@@ -12,12 +12,8 @@ namespace KustoPartitionIngest.PreSharding
     {
         protected SparkCreationTimeQueueManagerBase(
             string name,
-            IEnumerable<BlobEntry> blobList,
-            TokenCredential credentials,
-            Uri ingestionUri,
-            string databaseName,
-            string tableName)
-            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
+            IEnumerable<BlobEntry> blobList)
+            : base(name, blobList)
         {
         }
 

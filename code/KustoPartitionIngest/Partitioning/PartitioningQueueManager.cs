@@ -6,21 +6,19 @@ namespace KustoPartitionIngest.Partitioning
     internal class PartitioningQueueManager : QueueManagerBase
     {
         private const int PARALLEL_QUEUING = 32;
-
+        private readonly DmBackedIngestionManager _ingestionManager;
         private readonly bool _hasPartitioningHint;
         private readonly string _partitionKeyColumn;
 
         public PartitioningQueueManager(
             string name,
             IEnumerable<BlobEntry> blobList,
-            TokenCredential credentials,
-            Uri ingestionUri,
-            string databaseName,
-            string tableName,
+            DmBackedIngestionManager ingestionManager,
             bool hasPartitioningHint,
             string partitionKeyColumn)
-            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
+            : base(name, blobList)
         {
+            _ingestionManager = ingestionManager;
             _hasPartitioningHint = hasPartitioningHint;
             _partitionKeyColumn = partitionKeyColumn;
         }
@@ -34,6 +32,13 @@ namespace KustoPartitionIngest.Partitioning
             await Task.WhenAll(processTasks);
         }
 
+        protected override IImmutableDictionary<string, string> AlterReported(
+            IImmutableDictionary<string, string> reported)
+        {
+            return reported
+                .Add("Queued", _ingestionManager.QueueCount.ToString());
+        }
+
         private async Task ProcessUriAsync()
         {
             BlobEntry? blobEntry;
@@ -41,22 +46,20 @@ namespace KustoPartitionIngest.Partitioning
             while ((blobEntry = DequeueBlobEntry()) != null)
             {
                 (var timestamp, var partitionKey) = AnalyzeUri(blobEntry.uri);
-                var properties = CreateIngestionProperties();
 
-                if (timestamp != null)
-                {
-                    properties.AdditionalProperties.Add(
-                        "creationTime",
-                        $"{timestamp.Value.Year}-{timestamp.Value.Month}-{timestamp.Value.Day}");
-                }
                 if (partitionKey != null && _hasPartitioningHint)
                 {
-                    properties.AdditionalProperties.Add(
-                        "dataPartitionValueHint",
-                        $"{{'{_partitionKeyColumn}':'{partitionKey}'}}");
+                    await _ingestionManager.QueueIngestionAsync(
+                        new[] { blobEntry.uri },
+                        timestamp,
+                        (_partitionKeyColumn, partitionKey));
                 }
-
-                await IngestFromStorageAsync(blobEntry.uri, properties);
+                else
+                {
+                    await _ingestionManager.QueueIngestionAsync(
+                        new[] { blobEntry.uri },
+                        timestamp);
+                }
             }
         }
 

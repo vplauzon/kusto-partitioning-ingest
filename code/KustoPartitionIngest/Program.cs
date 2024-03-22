@@ -1,4 +1,5 @@
 ﻿using Azure.Identity;
+using Kusto.Data.Common;
 using KustoPartitionIngest.Partitioning;
 using KustoPartitionIngest.PreSharding;
 
@@ -50,10 +51,12 @@ namespace KustoPartitionIngest
                     list => new PartitioningQueueManager(
                         "Queue1",
                         list,
-                        credentials,
-                        new Uri(ingestionUri1),
-                        databaseName,
-                        tableName,
+                        new DmBackedIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri1),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.csv),
                         true,
                         partitionKeyColumn),
                     list => string.IsNullOrWhiteSpace(ingestionUri2)
@@ -61,10 +64,12 @@ namespace KustoPartitionIngest
                     : new PartitioningQueueManager(
                         "Queue2",
                         list,
-                        credentials,
-                        new Uri(ingestionUri2),
-                        databaseName,
-                        tableName,
+                        new DmBackedIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri2),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.csv),
                         false,
                         partitionKeyColumn),
                     storageUrl);
@@ -99,19 +104,23 @@ namespace KustoPartitionIngest
                     list => new PreShardingQueueManager(
                         "Queue1",
                         list,
-                        credentials,
-                        new Uri(ingestionUri1),
-                        databaseName,
-                        tableName),
+                        new InProcIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri1),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.parquet)),
                     list => string.IsNullOrWhiteSpace(ingestionUri2)
                     ? null
                     : new NoShardingQueueManager(
                         "Queue2",
                         list,
-                        credentials,
-                        new Uri(ingestionUri2),
-                        databaseName,
-                        tableName),
+                        new DmBackedIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri2),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.parquet)),
                     storageUrl);
 
                 Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");

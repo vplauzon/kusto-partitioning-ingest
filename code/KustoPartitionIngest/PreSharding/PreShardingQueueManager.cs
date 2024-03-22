@@ -3,6 +3,7 @@ using Kusto.Cloud.Platform.Data;
 using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Data.Net.Client;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 
@@ -22,26 +23,16 @@ namespace KustoPartitionIngest.PreSharding
         private const int MAX_BLOB_COUNT_COUNTING = 100;
 
         private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
-        private readonly ICslQueryProvider _queryClient;
+        private readonly InProcIngestionManager _ingestionManager;
         private volatile int _enrichedBlobCount = 0;
 
         public PreShardingQueueManager(
             string name,
             IEnumerable<BlobEntry> blobList,
-            TokenCredential credentials,
-            Uri ingestionUri,
-            string databaseName,
-            string tableName)
-            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
+            InProcIngestionManager ingestionManager)
+            : base(name, blobList)
         {
-            var uriBuilder = new UriBuilder(ingestionUri);
-
-            uriBuilder.Host = uriBuilder.Host.Substring("ingest-".Length);
-
-            var connectionBuilder = new KustoConnectionStringBuilder(uriBuilder.ToString())
-                .WithAadAzureTokenCredentialsAuthentication(credentials);
-
-            _queryClient = KustoClientFactory.CreateCslQueryProvider(connectionBuilder);
+            _ingestionManager = ingestionManager;
         }
 
         protected override async Task RunInternalAsync()
@@ -59,7 +50,9 @@ namespace KustoPartitionIngest.PreSharding
             IImmutableDictionary<string, string> reported)
         {
             return reported
-                .Add("Enriched", _enrichedBlobCount.ToString());
+                .Add("Enriched", _enrichedBlobCount.ToString())
+                .Add("Queued", _ingestionManager.QueueCount.ToString())
+                .Add("Ingested", _ingestionManager.QueueCount.ToString());
         }
 
         private async Task ProcessEnrichedBlobsAsync(Task enrichTask)
@@ -90,11 +83,11 @@ namespace KustoPartitionIngest.PreSharding
                             throw new NotSupportedException(
                                 "Bigger than batch size blob aren't supported");
                         }
-                        await IngestBlobsAsync(
-                            creationTime,
+                        _ingestionManager.QueueIngestion(
                             bucket.blobs
                             .Take(bucket.lastWholeShardLength)
-                            .Select(i => i.blobEntry.uri));
+                            .Select(i => i.blobEntry.uri),
+                            creationTime);
                         bucket.blobs.RemoveRange(0, bucket.lastWholeShardLength);
                         bucket = bucket with { lastWholeShardLength = 0 };
                     }
@@ -122,27 +115,10 @@ namespace KustoPartitionIngest.PreSharding
                 var creationTime = pair.Key;
                 var bucket = pair.Value;
 
-                await IngestBlobsAsync(creationTime, bucket.blobs.Select(i => i.blobEntry.uri));
+                _ingestionManager.QueueIngestion(
+                    bucket.blobs.Select(i => i.blobEntry.uri),
+                    creationTime);
             }
-        }
-
-        private async Task IngestBlobsAsync(DateTime timestamp, IEnumerable<Uri> batchBlobUris)
-        {
-            var batchId = Guid.NewGuid().ToString();
-            var properties = CreateIngestionProperties();
-
-            properties.AdditionalProperties.Add(
-                "creationTime",
-                $"{timestamp.Year:D2}-{timestamp.Month:D2}-{timestamp.Day:D2} "
-                + $"{timestamp.Hour:D2}:00:00.0000");
-            properties.DropByTags = new[] { batchId };
-            properties.Format = DataSourceFormat.parquet;
-
-            var ingestTasks = batchBlobUris
-                 .Select(uri => IngestFromStorageAsync(uri, properties))
-                 .ToImmutableArray();
-
-            await Task.WhenAll(ingestTasks);
         }
 
         private async Task EnrichBlobMetadataAsync()
@@ -211,8 +187,8 @@ namespace KustoPartitionIngest.PreSharding
             var query = string.Join(Environment.NewLine, scalars)
                 + "print "
                 + string.Join(", ", scalerPrint);
-            var reader = await _queryClient.ExecuteQueryAsync(
-                DatabaseName,
+            var reader = await _ingestionManager.QueryClient.ExecuteQueryAsync(
+                _ingestionManager.DatabaseName,
                 query,
                 new ClientRequestProperties());
             var counts = reader.ToDataSet().Tables[0].Rows[0].ItemArray

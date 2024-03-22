@@ -14,38 +14,21 @@ namespace KustoPartitionIngest
     {
         private readonly string _name;
         private readonly ConcurrentQueue<BlobEntry> _blobs;
-        private readonly IKustoQueuedIngestClient _ingestClient;
-        private readonly string _tableName;
-        private volatile int _queuedCount = 0;
 
         protected QueueManagerBase(
             string name,
-            IEnumerable<BlobEntry> blobList,
-            TokenCredential credentials,
-            Uri ingestionUri,
-            string databaseName,
-            string tableName)
+            IEnumerable<BlobEntry> blobList)
         {
-            var builder = new KustoConnectionStringBuilder(ingestionUri.ToString())
-                .WithAadAzureTokenCredentialsAuthentication(credentials);
-
             _name = name;
             _blobs = new(blobList);
-            _ingestClient = KustoIngestFactory.CreateQueuedIngestClient(builder);
-            DatabaseName = databaseName;
-            _tableName = tableName;
         }
-
-        protected string DatabaseName { get; }
-
+        
         #region IReportable
         string IReportable.Name => _name;
 
         IImmutableDictionary<string, string> IReportable.GetReport()
         {
-            return AlterReported(ImmutableDictionary<string, string>
-                .Empty
-                .Add("Queued", _queuedCount.ToString()));
+            return AlterReported(ImmutableDictionary<string, string>.Empty);
         }
         #endregion
 
@@ -56,11 +39,8 @@ namespace KustoPartitionIngest
         }
         #endregion
 
-        protected virtual IImmutableDictionary<string, string> AlterReported(
-            IImmutableDictionary<string, string> reported)
-        {
-            return reported;
-        }
+        protected abstract IImmutableDictionary<string, string> AlterReported(
+            IImmutableDictionary<string, string> reported);
 
         protected abstract Task RunInternalAsync();
 
@@ -74,19 +54,6 @@ namespace KustoPartitionIngest
             {
                 return null;
             }
-        }
-
-        protected KustoIngestionProperties CreateIngestionProperties()
-        {
-            return new KustoIngestionProperties(DatabaseName, _tableName);
-        }
-
-        protected async Task IngestFromStorageAsync(
-            Uri blobUri,
-            KustoIngestionProperties properties)
-        {
-            await _ingestClient.IngestFromStorageAsync(blobUri.ToString(), properties);
-            Interlocked.Increment(ref _queuedCount);
         }
     }
 }

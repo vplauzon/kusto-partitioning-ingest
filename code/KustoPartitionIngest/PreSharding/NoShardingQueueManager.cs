@@ -11,16 +11,15 @@ namespace KustoPartitionIngest.PreSharding
     internal class NoShardingQueueManager : SparkCreationTimeQueueManagerBase
     {
         private const int PARALLEL_QUEUING = 32;
+        private readonly DmBackedIngestionManager _ingestionManager;
 
         public NoShardingQueueManager(
             string name,
             IEnumerable<BlobEntry> blobList,
-            TokenCredential credentials,
-            Uri ingestionUri,
-            string databaseName,
-            string tableName)
-            : base(name, blobList, credentials, ingestionUri, databaseName, tableName)
+            DmBackedIngestionManager ingestionManager)
+            : base(name, blobList)
         {
+            _ingestionManager = ingestionManager;
         }
 
         protected override async Task RunInternalAsync()
@@ -32,6 +31,13 @@ namespace KustoPartitionIngest.PreSharding
             await Task.WhenAll(processTasks);
         }
 
+        protected override IImmutableDictionary<string, string> AlterReported(
+            IImmutableDictionary<string, string> reported)
+        {
+            return reported
+                .Add("Queued", _ingestionManager.QueueCount.ToString());
+        }
+
         private async Task ProcessUriAsync()
         {
             BlobEntry? blobEntry;
@@ -39,15 +45,8 @@ namespace KustoPartitionIngest.PreSharding
             while ((blobEntry = DequeueBlobEntry()) != null)
             {
                 var timestamp = ExtractTimeFromUri(blobEntry.uri);
-                var properties = CreateIngestionProperties();
 
-                properties.AdditionalProperties.Add(
-                    "creationTime",
-                    $"{timestamp.Year:D2}-{timestamp.Month:D2}-{timestamp.Day:D2} "
-                    + $"{timestamp.Hour:D2}:00:00.0000");
-                properties.Format = DataSourceFormat.parquet;
-
-                await IngestFromStorageAsync(blobEntry.uri, properties);
+                await _ingestionManager.QueueIngestionAsync(new[] {blobEntry.uri}, timestamp);
             }
         }
     }
