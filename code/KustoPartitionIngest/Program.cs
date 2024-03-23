@@ -113,8 +113,11 @@ namespace KustoPartitionIngest
                         {
                             return new PreShardingQueueManager(
                                 "Queue1",
-                                list,
-                                ingestionManager1);
+                                credentials,
+                                new Uri(ingestionUri1),
+                                databaseName,
+                                ingestionManager1,
+                                list);
                         },
                         list => string.IsNullOrWhiteSpace(ingestionUri2)
                         ? null

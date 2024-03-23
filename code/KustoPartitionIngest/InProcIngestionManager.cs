@@ -3,6 +3,7 @@ using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Data.Net.Client;
 using Kusto.Ingest;
+using KustoPartitionIngest.InProcManagedIngestion;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -14,10 +15,9 @@ namespace KustoPartitionIngest
 {
     internal class InProcIngestionManager : IAsyncDisposable
     {
+        private readonly IngestionCommandManager _commandManager;
         private readonly string _tableName;
         private readonly DataSourceFormat _format;
-        private volatile int _queuedCount = 0;
-        private volatile int _ingestedCount = 0;
 
         public InProcIngestionManager(
             TokenCredential credentials,
@@ -26,44 +26,51 @@ namespace KustoPartitionIngest
             string tableName,
             DataSourceFormat format)
         {
-            var uriBuilder = new UriBuilder(ingestionUri);
-
-            uriBuilder.Host = uriBuilder.Host.Substring("ingest-".Length);
-
-            var connectionBuilder = new KustoConnectionStringBuilder(uriBuilder.ToString())
+            var queryUri = GetQueryUriFromIngestionUri(ingestionUri);
+            var connectionBuilder = new KustoConnectionStringBuilder(queryUri.ToString())
                 .WithAadAzureTokenCredentialsAuthentication(credentials);
+            var commandClient = KustoClientFactory.CreateCslAdminProvider(connectionBuilder);
 
-            QueryClient = KustoClientFactory.CreateCslQueryProvider(connectionBuilder);
-            DatabaseName = databaseName;
+            _commandManager = new IngestionCommandManager(
+                commandClient,
+                databaseName);
             _tableName = tableName;
             _format = format;
         }
 
-        public string DatabaseName { get; }
+        #region IAsyncDisposable
+        async ValueTask IAsyncDisposable.DisposeAsync()
+        {
+            await using (_commandManager)
+            {
+            }
+        }
+        #endregion
 
-        public ICslQueryProvider QueryClient { get; }
+        public static Uri GetQueryUriFromIngestionUri(Uri ingestionUri)
+        {
+            var uriBuilder = new UriBuilder(ingestionUri);
 
-        public int QueueCount => _queuedCount;
+            uriBuilder.Host = uriBuilder.Host.Substring("ingest-".Length);
 
-        public int IngestedCount => _ingestedCount;
+            return uriBuilder.Uri;
+        }
 
-        public void QueueIngestion(
+        public async Task QueueIngestionAsync(
             IEnumerable<Uri> blobUris,
             DateTime? creationTime,
             params (string key, string value)[] properties)
         {
-            var uris = blobUris.ToImmutableArray();
+            var blobUriList = string.Join(
+                ", ",
+                blobUris
+                .Select(u => $"'{u}'"));
+            var commandText = $@"
+.ingest into table {_tableName}
+('{blobUriList}')
+with (format='{_format}')";
 
-            Interlocked.Add(ref _queuedCount, uris.Length);
-
-            throw new NotImplementedException();
+            await _commandManager.ExecuteIngestionAsync(commandText);
         }
-
-        #region IAsyncDisposable
-        ValueTask IAsyncDisposable.DisposeAsync()
-        {
-            throw new NotImplementedException();
-        }
-        #endregion
     }
 }

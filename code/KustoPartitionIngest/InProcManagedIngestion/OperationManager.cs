@@ -17,6 +17,8 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         private record OperationItem(string operationId, TaskCompletionSource source);
         #endregion
 
+        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(1);
+
         private readonly ICslAdminProvider _commandClient;
         private readonly string _databaseName;
         private readonly ConcurrentQueue<OperationItem> _operationQueue = new();
@@ -57,6 +59,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             do
             {
                 TransferOperations(_operationQueue, operationMap);
+                await Task.Delay(PERIOD);
                 await DetectOperationCompletionAsync(operationMap);
             }
             while (operationMap.Any() || _operationQueue.Any());

@@ -23,14 +23,24 @@ namespace KustoPartitionIngest.InProcManagedIngestion
 
         private readonly ICslAdminProvider _commandClient;
         private readonly string _databaseName;
-        private readonly long _capacity;
+        private readonly Task<long> _capacityTask;
         private readonly OperationManager _operationManager;
         private readonly ConcurrentQueue<CommandQueueItem> _commandQueue = new();
         private readonly ConcurrentSingleton _managementSingleton = new();
         private Task _managementTask = Task.CompletedTask;
 
         #region Constructor
-        public static async Task<IngestionCommandManager> CreateAsync(
+        public IngestionCommandManager(
+            ICslAdminProvider commandClient,
+            string databaseName)
+        {
+            _commandClient = commandClient;
+            _databaseName = databaseName;
+            _capacityTask = FetchCapacityAsync(commandClient, databaseName);
+            _operationManager = new OperationManager(commandClient, databaseName);
+        }
+
+        private static async Task<long> FetchCapacityAsync(
             ICslAdminProvider commandClient,
             string databaseName)
         {
@@ -39,21 +49,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
                 ".show capacity ingestions | project Total");
             var capacity = (long)(reader.ToDataSet().Tables[0].Rows[0].ItemArray[0]!);
 
-            return new IngestionCommandManager(
-                commandClient,
-                databaseName,
-                capacity);
-        }
-
-        private IngestionCommandManager(
-            ICslAdminProvider commandClient,
-            string databaseName,
-            long capacity)
-        {
-            _commandClient = commandClient;
-            _databaseName = databaseName;
-            _capacity = capacity;
-            _operationManager = new OperationManager(commandClient, databaseName);
+            return capacity;
         }
         #endregion
 
@@ -83,11 +79,12 @@ namespace KustoPartitionIngest.InProcManagedIngestion
 
         private async Task ManageQueueAsync()
         {
+            var capacity = await _capacityTask;
             var ingestionList = new List<OperationQueueItem>();
 
             do
             {
-                await PushIngestionsAsync(ingestionList);
+                await PushIngestionsAsync(ingestionList, capacity);
                 await DetectIngestionCompletionAsync(ingestionList);
             }
             while (ingestionList.Any() || _commandQueue.Any());
@@ -123,9 +120,11 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             ingestionList.AddRange(incompletedItems);
         }
 
-        private async Task PushIngestionsAsync(List<OperationQueueItem> ingestionList)
+        private async Task PushIngestionsAsync(
+            List<OperationQueueItem> ingestionList,
+            long capacity)
         {
-            while (ingestionList.Count() < _capacity
+            while (ingestionList.Count() < capacity
                 && _commandQueue.TryDequeue(out var commandItem))
             {
                 var operationId = await PushIngestionAsync(commandItem.commandText);
