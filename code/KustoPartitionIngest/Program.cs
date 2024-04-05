@@ -1,5 +1,6 @@
 ﻿using Azure.Identity;
 using Kusto.Data.Common;
+using KustoPartitionIngest.Flat;
 using KustoPartitionIngest.Partitioning;
 using KustoPartitionIngest.PreSharding;
 
@@ -25,6 +26,10 @@ namespace KustoPartitionIngest
                             return;
                         case 's':
                             await RunPreShardingFlowAsync(args);
+
+                            return;
+                        case 'f':
+                            await RunFlatFlowAsync(args);
 
                             return;
                         default:
@@ -140,6 +145,54 @@ namespace KustoPartitionIngest
 
                     await orchestrator.RunAsync();
                 }
+            }
+            else
+            {
+                DisplayHelp();
+            }
+        }
+
+        private static async Task RunFlatFlowAsync(string[] args)
+        {
+            if (args.Length >= 5)
+            {
+                var storageUrl = args[1];
+                var nonSasStorageUrl = storageUrl.Split('?').First();
+                var databaseName = args[2];
+                var tableName = args[3];
+                var ingestionUri1 = args[4];
+                var ingestionUri2 = args.Length >= 6 ? args[5] : string.Empty;
+                var credentials = new DefaultAzureCredential(true);
+                var orchestrator = new BulkOrchestrator(
+                    list => new FlatQueueManager(
+                        "Queue1",
+                        list,
+                        new DmBackedIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri1),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.csv)),
+                    list => string.IsNullOrWhiteSpace(ingestionUri2)
+                    ? null
+                    : new FlatQueueManager(
+                        "Queue2",
+                        list,
+                        new DmBackedIngestionManager(
+                            credentials,
+                            new Uri(ingestionUri2),
+                            databaseName,
+                            tableName,
+                            DataSourceFormat.csv)),
+                    storageUrl);
+
+                Console.WriteLine($"Storage URL:  {nonSasStorageUrl}");
+                Console.WriteLine($"Kusto Database Name:  {databaseName}");
+                Console.WriteLine($"Kusto Table Name:  {tableName}");
+                Console.WriteLine($"Ingestion URI 1 (with hint):  {ingestionUri1}");
+                Console.WriteLine($"Ingestion URI 2 (without hint):  {ingestionUri2}");
+
+                await orchestrator.RunAsync();
             }
             else
             {
