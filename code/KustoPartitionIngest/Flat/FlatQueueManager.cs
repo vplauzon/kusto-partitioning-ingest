@@ -1,48 +1,47 @@
 ﻿using Azure.Core;
+using Microsoft.IdentityModel.Abstractions;
 using System.Collections.Immutable;
 
 namespace KustoPartitionIngest.Flat
 {
-    internal class FlatQueueManager : QueueManagerBase
+    internal class FlatQueueManager : IQueueManager
     {
         private const int PARALLEL_QUEUING = 32;
+
+        private readonly string _name;
+        private readonly IImmutableList<BlobEntry> _blobList;
         private readonly DmBackedIngestionManager _ingestionManager;
 
         public FlatQueueManager(
             string name,
             IEnumerable<BlobEntry> blobList,
             DmBackedIngestionManager ingestionManager)
-            : base(name, blobList)
         {
+            _name = name;
+            _blobList = blobList.ToImmutableArray();
             _ingestionManager = ingestionManager;
         }
 
-        protected override async Task RunInternalAsync()
+        #region IQueueManager
+        string IReportable.Name => _name;
+
+        async Task IQueueManager.RunAsync()
         {
-            var processTasks = Enumerable.Range(0, PARALLEL_QUEUING)
-                .Select(i => Task.Run(() => ProcessUrisAsync()))
-                .ToImmutableArray();
-
-            await Task.WhenAll(processTasks);
-        }
-
-        protected override IImmutableDictionary<string, string> AlterReported(
-            IImmutableDictionary<string, string> reported)
-        {
-            return reported
-                .Add("Queued", _ingestionManager.QueueCount.ToString());
-        }
-
-        private async Task ProcessUrisAsync()
-        {
-            BlobEntry? blobEntry;
-
-            while ((blobEntry = DequeueBlobEntry()) != null)
+            foreach (var chunk in _blobList.Chunk(PARALLEL_QUEUING))
             {
-                await _ingestionManager.QueueIngestionAsync(
-                    new[] { blobEntry.uri },
-                    DateTime.Now);
+                var uris = chunk
+                    .Select(e => e.uri);
+
+                await _ingestionManager.QueueIngestionAsync(uris, null);
             }
         }
+
+        IImmutableDictionary<string, string> IReportable.GetReport()
+        {
+            return ImmutableDictionary<string, string>
+                .Empty
+                .Add("Queued", _ingestionManager.QueueCount.ToString());
+        }
+        #endregion
     }
 }

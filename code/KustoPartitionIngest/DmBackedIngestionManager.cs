@@ -42,7 +42,9 @@ namespace KustoPartitionIngest
             DateTime? creationTime,
             params (string key, string value)[] properties)
         {
-            var kustoProperties = new KustoIngestionProperties();
+            var kustoProperties = new KustoIngestionProperties(
+                _databaseName,
+                _tableName);
 
             kustoProperties.Format = _format;
             if (creationTime != null)
