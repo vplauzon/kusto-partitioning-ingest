@@ -141,9 +141,10 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         {
             var reader =
                 await _commandClient.ExecuteControlCommandAsync(_databaseName, commandText);
-            var operationId = (string)(reader.ToDataSet().Tables[0].Rows[0][0]);
+            var table = reader.ToDataSet().Tables[0];
+            var operationId = (Guid)(table.Rows[0][0]);
 
-            return operationId;
+            return operationId.ToString();
         }
     }
 }

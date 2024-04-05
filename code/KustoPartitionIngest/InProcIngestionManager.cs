@@ -66,8 +66,8 @@ namespace KustoPartitionIngest
                 blobUris
                 .Select(u => $"'{u}'"));
             var commandText = $@"
-.ingest into table {_tableName}
-('{blobUriList}')
+.ingest async into table {_tableName}
+({blobUriList})
 with (format='{_format}')";
 
             await _commandManager.ExecuteIngestionAsync(commandText);

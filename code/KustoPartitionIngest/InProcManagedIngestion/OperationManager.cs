@@ -2,7 +2,6 @@
 using Kusto.Data.Common;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
 using System.Linq;
@@ -84,12 +83,19 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             var results = reader.ToDataSet().Tables[0].Rows.Cast<DataRow>()
                 .Select(r => new
                 {
-                    OperationId = (string)r["OperationId"],
+                    OperationId = ((Guid)r["OperationId"]).ToString(),
                     State = (string)r["State"],
                     Status = (string)r["Status"]
                 })
                 .ToImmutableArray();
 
+            if (results.Length != operationMap.Count)
+            {
+                throw new InvalidDataException(
+                    "Number of operations mismatch:  "
+                    + $"{operationMap.Count} expected "
+                    + $"{results.Length} found in Kusto");
+            }
             foreach (var result in results)
             {
                 switch (result.State)
@@ -109,10 +115,14 @@ namespace KustoPartitionIngest.InProcManagedIngestion
                             new InvalidOperationException(
                                 $"Operation failed:  '{result.Status}'"));
                         break;
+                    case "InProgress":
+                        break;
+
+                    default:
+                        throw new NotSupportedException(
+                            $"Unsupported operation state:  '{result.State}'");
                 }
             }
-
-            throw new NotImplementedException();
         }
 
         private void TransferOperations(
