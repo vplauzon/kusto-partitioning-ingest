@@ -33,6 +33,7 @@ namespace KustoPartitionIngest
             {
                 var report = reportable.GetReport();
                 var values = report
+                    .OrderBy(p => p.Key)
                     .Select(p => $"{p.Key} ({p.Value})");
                 var text = string.Join(", ", values);
 

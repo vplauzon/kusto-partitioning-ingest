@@ -20,7 +20,7 @@ namespace KustoPartitionIngest.PreSharding
         #endregion
 
         private const long SHARD_ROW_COUNT = 1048576;
-        private const long BATCH_SIZE = 1000 * 1000 * 1000;
+        private const long BATCH_SIZE = 1000 * 1000 * 1000 / 8;
         private const int PARALLEL_COUNTING = 15;
         private const int MAX_BLOB_COUNT_COUNTING = 100;
 
