@@ -37,7 +37,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         }
         #endregion
 
-        public async Task OperationCompletedAsync(string operationId)
+        public Task OperationCompletedAsync(string operationId)
         {
             var source = new TaskCompletionSource();
 
@@ -47,7 +47,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
                 _managementTask = ManageQueueAsync(_managementTask);
             }
 
-            await source.Task;
+            return source.Task;
         }
 
         private async Task ManageQueueAsync(Task previousManagementTask)
