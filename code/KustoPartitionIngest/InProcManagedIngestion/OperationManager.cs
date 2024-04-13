@@ -44,17 +44,17 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             _operationQueue.Enqueue(new OperationItem(operationId, source));
             if (_managementSingleton.TryActivate())
             {
-                await _managementTask;
-                _managementTask = ManageQueueAsync();
+                _managementTask = ManageQueueAsync(_managementTask);
             }
 
             await source.Task;
         }
 
-        private async Task ManageQueueAsync()
+        private async Task ManageQueueAsync(Task previousManagementTask)
         {
             var operationMap = new Dictionary<string, OperationItem>();
 
+            await previousManagementTask;
             do
             {
                 await Task.Delay(PERIOD);
@@ -69,7 +69,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             {
                 if (_managementSingleton.TryActivate())
                 {   //  This thread is the winner and we simply continue to process
-                    await ManageQueueAsync();
+                    await ManageQueueAsync(Task.CompletedTask);
                 }
             }
         }
