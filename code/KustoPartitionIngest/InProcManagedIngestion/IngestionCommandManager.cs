@@ -15,10 +15,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         #region Inner types
         private record CommandQueueItem(string commandText, TaskCompletionSource source);
 
-        private record OperationQueueItem(
-            string operationId,
-            Task operationTask,
-            TaskCompletionSource commandSource);
+        private record OperationQueueItem(string operationId, Task operationTask);
         #endregion
 
         private readonly ICslAdminProvider _commandClient;
@@ -26,8 +23,8 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         private readonly Task<long> _capacityTask;
         private readonly OperationManager _operationManager;
         private readonly ConcurrentQueue<CommandQueueItem> _commandQueue = new();
-        private readonly ConcurrentSingleton _managementSingleton = new();
-        private Task _managementTask = Task.CompletedTask;
+        private readonly ConcurrentQueue<OperationQueueItem> _operationQueue = new();
+        private volatile int _commandCount = 0;
 
         #region Constructor
         public IngestionCommandManager(
@@ -56,7 +53,9 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         #region IAsyncDisposable
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
-            await _managementTask;
+            await _capacityTask;
+            await Task.WhenAll(_commandQueue.Select(i => i.source.Task));
+            await Task.WhenAll(_operationQueue.Select(i => i.operationTask));
             await using (_operationManager)
             {
             }
@@ -68,83 +67,58 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             var source = new TaskCompletionSource();
 
             _commandQueue.Enqueue(new CommandQueueItem(commandText, source));
-            if (_managementSingleton.TryActivate())
-            {
-                await _managementTask;
-                _managementTask = ManageQueueAsync();
-            }
-
+            await TryScheduleIngestionAsync();
             await source.Task;
         }
 
-        private async Task ManageQueueAsync()
+        private async Task TryScheduleIngestionAsync()
         {
             var capacity = await _capacityTask;
-            var ingestionList = new List<OperationQueueItem>();
+            var newCommandCount = Interlocked.Increment(ref _commandCount);
 
-            do
+            if (newCommandCount <= capacity)
             {
-                await PushIngestionsAsync(ingestionList, capacity);
-                await DetectIngestionCompletionAsync(ingestionList);
-            }
-            while (ingestionList.Any() || _commandQueue.Any());
-            _managementSingleton.Deactivate();
-            //  Here we fight the racing condition that something might have
-            //  been added to the queue while we were deactivating
-            if (_commandQueue.Any())
-            {
-                if (_managementSingleton.TryActivate())
-                {   //  This thread is the winner and we simply continue to process
-                    await ManageQueueAsync();
+                var operationQueueItem = await PushIngestionsAsync();
+
+                if (operationQueueItem != null)
+                {
+                    _operationQueue.Enqueue(operationQueueItem);
+
+                    return;
                 }
             }
+            Interlocked.Decrement(ref _commandCount);
         }
 
-        private static async Task DetectIngestionCompletionAsync(
-            List<OperationQueueItem> ingestionList)
+        private async Task<OperationQueueItem?> PushIngestionsAsync()
         {
-            await Task.WhenAny(ingestionList.Select(o => o.operationTask));
-
-            var snapshots = ingestionList
-                .Select(o => new { Item = o, IsCompleted = o.operationTask.IsCompleted })
-                .ToImmutableArray();
-            var completedItems = snapshots.Where(i => i.IsCompleted).Select(i => i.Item);
-            var incompletedItems = snapshots.Where(i => !i.IsCompleted).Select(i => i.Item);
-
-            await Task.WhenAll(completedItems.Select(i => i.operationTask));
-            foreach (var i in completedItems)
+            if (_commandQueue.TryDequeue(out var commandItem))
             {
-                i.commandSource.SetResult();
-            }
-            ingestionList.Clear();
-            ingestionList.AddRange(incompletedItems);
-        }
-
-        private async Task PushIngestionsAsync(
-            List<OperationQueueItem> ingestionList,
-            long capacity)
-        {
-            while (ingestionList.Count() < capacity
-                && _commandQueue.TryDequeue(out var commandItem))
-            {
-                var operationId = await PushIngestionAsync(commandItem.commandText);
+                var reader = await _commandClient.ExecuteControlCommandAsync(
+                    _databaseName,
+                    commandItem.commandText);
+                var table = reader.ToDataSet().Tables[0];
+                var operationId = ((Guid)(table.Rows[0][0])).ToString();
                 var operationTask = _operationManager.OperationCompletedAsync(operationId);
+                var postOperationTask = operationTask.ContinueWith(async (t) =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                    {
+                        commandItem.source.SetException(t.Exception);
+                    }
+                    else
+                    {
+                        commandItem.source.SetResult();
+                        await TryScheduleIngestionAsync();
+                    }
+                });
 
-                ingestionList.Add(new OperationQueueItem(
-                    operationId,
-                    operationTask,
-                    commandItem.source));
+                return new OperationQueueItem(operationId, postOperationTask);
             }
-        }
-
-        private async Task<string> PushIngestionAsync(string commandText)
-        {
-            var reader =
-                await _commandClient.ExecuteControlCommandAsync(_databaseName, commandText);
-            var table = reader.ToDataSet().Tables[0];
-            var operationId = (Guid)(table.Rows[0][0]);
-
-            return operationId.ToString();
+            else
+            {
+                return null;
+            }
         }
     }
 }
