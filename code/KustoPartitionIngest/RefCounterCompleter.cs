@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 
 namespace KustoPartitionIngest
 {
-    internal class RefCounterSignaler : ISignaler
+    internal class RefCounterCompleter : ICompleter
     {
         private volatile int _counter = 0;
         private volatile TaskCompletionSource? _taskSource = null;
 
-        #region ISignaler
-        void ISignaler.Signal()
+        #region ICompleter
+        void ICompleter.Complete()
         {
             if (Interlocked.Decrement(ref _counter) == 0
                 && _taskSource != null)

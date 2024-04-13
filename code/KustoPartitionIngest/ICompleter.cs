@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 
 namespace KustoPartitionIngest
 {
-    public interface ISignaler
+    public interface ICompleter
     {
-        void Signal();
+        void Complete();
     }
 }

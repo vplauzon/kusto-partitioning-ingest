@@ -16,7 +16,7 @@
     <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Azure.Identity" Version="1.10.4" />
+    <PackageReference Include="Azure.Identity" Version="1.11.0" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
     <PackageReference Include="Microsoft.Azure.Kusto.Data" Version="12.1.2" />
     <PackageReference Include="Microsoft.Azure.Kusto.Ingest" Version="12.1.2" />
