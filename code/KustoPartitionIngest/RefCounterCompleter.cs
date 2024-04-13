@@ -29,9 +29,12 @@ namespace KustoPartitionIngest
 
         public async Task AwaitCompletionAsync()
         {
-            _taskSource = new TaskCompletionSource();
+            if (_counter != 0)
+            {
+                _taskSource = new TaskCompletionSource();
 
-            await _taskSource.Task;
+                await _taskSource.Task;
+            }
         }
     }
 }
