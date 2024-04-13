@@ -57,8 +57,8 @@ namespace KustoPartitionIngest.InProcManagedIngestion
 
             do
             {
-                TransferOperations(_operationQueue, operationMap);
                 await Task.Delay(PERIOD);
+                TransferOperations(_operationQueue, operationMap);
                 await DetectOperationCompletionAsync(operationMap);
             }
             while (operationMap.Any() || _operationQueue.Any());
