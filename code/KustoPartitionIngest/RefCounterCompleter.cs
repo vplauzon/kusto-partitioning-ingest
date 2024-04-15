@@ -8,6 +8,7 @@ namespace KustoPartitionIngest
 {
     internal class RefCounterCompleter : ICompleter
     {
+        private volatile Exception? _exception = null;
         private volatile int _counter = 0;
         private volatile TaskCompletionSource? _taskSource = null;
 
@@ -20,7 +21,14 @@ namespace KustoPartitionIngest
                 _taskSource.SetResult();
             }
         }
+
+        void ICompleter.SetException(Exception ex)
+        {
+            throw new NotImplementedException();
+        }
         #endregion
+
+        public Exception? Exception => _exception;
 
         public void IncrementCounter()
         {

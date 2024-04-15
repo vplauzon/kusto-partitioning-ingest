@@ -9,5 +9,7 @@ namespace KustoPartitionIngest
     public interface ICompleter
     {
         void Complete();
+
+        void SetException(Exception ex);
     }
 }
