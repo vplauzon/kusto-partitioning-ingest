@@ -57,6 +57,7 @@ namespace KustoPartitionIngest
         }
 
         public async Task QueueIngestionAsync(
+            ICompleter completer,
             IEnumerable<Uri> blobUris,
             DateTime? creationTime,
             params (string key, string value)[] properties)
@@ -70,7 +71,7 @@ namespace KustoPartitionIngest
 ({blobUriList})
 with (format='{_format}')";
 
-            await _commandManager.ExecuteIngestionAsync(commandText);
+            await _commandManager.QueueIngestionAsync(completer, commandText);
         }
     }
 }

@@ -13,7 +13,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
     internal class OperationManager : IAsyncDisposable
     {
         #region Inner types
-        private record OperationItem(string operationId, TaskCompletionSource source);
+        private record OperationItem(string operationId, ICompleter completer);
         #endregion
 
         private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(1);
@@ -37,24 +37,19 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         }
         #endregion
 
-        public Task OperationCompletedAsync(string operationId)
+        public void TrackOperationCompleted(ICompleter completer, string operationId)
         {
-            var source = new TaskCompletionSource();
-
-            _operationQueue.Enqueue(new OperationItem(operationId, source));
+            _operationQueue.Enqueue(new OperationItem(operationId, completer));
             if (_managementSingleton.TryActivate())
             {
-                _managementTask = ManageQueueAsync(_managementTask);
+                _managementTask = ManageQueueAsync();
             }
-
-            return source.Task;
         }
 
-        private async Task ManageQueueAsync(Task previousManagementTask)
+        private async Task ManageQueueAsync()
         {
             var operationMap = new Dictionary<string, OperationItem>();
 
-            await previousManagementTask;
             do
             {
                 await Task.Delay(PERIOD);
@@ -69,7 +64,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
             {
                 if (_managementSingleton.TryActivate())
                 {   //  This thread is the winner and we simply continue to process
-                    await ManageQueueAsync(Task.CompletedTask);
+                    await ManageQueueAsync();
                 }
             }
         }
@@ -101,7 +96,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
                 switch (result.State)
                 {
                     case "Completed":
-                        operationMap[result.OperationId].source.SetResult();
+                        operationMap[result.OperationId].completer.Complete();
                         operationMap.Remove(result.OperationId);
                         break;
                     case "Failed":
@@ -111,7 +106,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
                     case "Throttled":
                     case "Canceled":
                     case "Skipped":
-                        operationMap[result.OperationId].source.SetException(
+                        operationMap[result.OperationId].completer.SetException(
                             new InvalidOperationException(
                                 $"Operation failed:  '{result.Status}'"));
                         break;

@@ -25,7 +25,6 @@ namespace KustoPartitionIngest.PreSharding
         private const int MAX_BLOB_COUNT_COUNTING = 100;
 
         private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
-        private readonly List<Task> _ingestionTasks = new();
         private readonly ICslQueryProvider _queryClient;
         private readonly string _databaseName;
         private readonly InProcIngestionManager _ingestionManager;
@@ -55,7 +54,6 @@ namespace KustoPartitionIngest.PreSharding
         #region IAsyncDisposable
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
-            await Task.WhenAll(_ingestionTasks);
             await using (_ingestionManager)
             {
             }
@@ -113,7 +111,7 @@ namespace KustoPartitionIngest.PreSharding
                             throw new NotSupportedException(
                                 "Bigger than batch size blob aren't supported");
                         }
-                        QueueIngestion(
+                        await QueueIngestionAsync(
                             bucket.blobs
                             .Take(bucket.lastWholeShardLength)
                             .Select(i => i.blobEntry.uri),
@@ -146,24 +144,22 @@ namespace KustoPartitionIngest.PreSharding
                 var creationTime = pair.Key;
                 var bucket = pair.Value;
 
-                QueueIngestion(
+                await QueueIngestionAsync(
                     bucket.blobs.Select(i => i.blobEntry.uri),
                     creationTime);
             }
         }
 
-        private void QueueIngestion(IEnumerable<Uri> blobUris, DateTime creationTime)
+        private async Task QueueIngestionAsync(IEnumerable<Uri> blobUris, DateTime creationTime)
         {
             var blobCount = blobUris.Count();
-            var ingestionTask = _ingestionManager
-                .QueueIngestionAsync(blobUris, creationTime)
-                .ContinueWith(t =>
-                {
-                    Interlocked.Add(ref _ingestionCount, blobCount);
-                });
+            var completer = new ActionCompleter(() =>
+            {
+                Interlocked.Add(ref _ingestionCount, blobCount);
+            });
 
+            await _ingestionManager.QueueIngestionAsync(completer, blobUris, creationTime);
             Interlocked.Add(ref _queueCount, blobCount);
-            _ingestionTasks.Add(ingestionTask);
         }
 
         private async Task EnrichBlobMetadataAsync()
