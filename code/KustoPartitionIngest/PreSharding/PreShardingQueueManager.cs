@@ -70,7 +70,7 @@ namespace KustoPartitionIngest.PreSharding
                 .ToImmutableArray();
             var enrichTask = Task.WhenAll(processTasks);
 
-            await ProcessEnrichedBlobsAsync(enrichTask);
+            await IngestEnrichedBlobsAsync(enrichTask);
             await enrichTask;
         }
 
@@ -83,9 +83,20 @@ namespace KustoPartitionIngest.PreSharding
                 .Add("Ingested", _ingestionCount.ToString());
         }
 
-        private async Task ProcessEnrichedBlobsAsync(Task enrichTask)
+        private async Task IngestEnrichedBlobsAsync(Task enrichTask)
         {
             var aggregationBuckets = new Dictionary<DateTime, AggregationBucket>();
+            var ingestionQueueCount = 0;
+            var ingestionDoneCount = 0;
+            TaskCompletionSource? ingestionDoneTaskSource = null;
+            var countCompleter = new ActionCompleter(() =>
+            {
+                Interlocked.Increment(ref ingestionDoneCount);
+                if (ingestionDoneTaskSource != null && ingestionQueueCount == ingestionDoneCount)
+                {
+                    ingestionDoneTaskSource.SetResult();
+                }
+            });
 
             while (!enrichTask.IsCompleted || _rowCountBlobs.Any())
             {
@@ -112,10 +123,12 @@ namespace KustoPartitionIngest.PreSharding
                                 "Bigger than batch size blob aren't supported");
                         }
                         await QueueIngestionAsync(
+                            countCompleter,
                             bucket.blobs
                             .Take(bucket.lastWholeShardLength)
                             .Select(i => i.blobEntry.uri),
                             creationTime);
+                        ++ingestionQueueCount;
 
                         bucket.blobs.RemoveRange(0, bucket.lastWholeShardLength);
                         bucket = bucket with { lastWholeShardLength = 0 };
@@ -145,20 +158,29 @@ namespace KustoPartitionIngest.PreSharding
                 var bucket = pair.Value;
 
                 await QueueIngestionAsync(
+                    countCompleter,
                     bucket.blobs.Select(i => i.blobEntry.uri),
                     creationTime);
+                ++ingestionQueueCount;
             }
+            ingestionDoneTaskSource = new TaskCompletionSource();
+            await ingestionDoneTaskSource.Task;
         }
 
-        private async Task QueueIngestionAsync(IEnumerable<Uri> blobUris, DateTime creationTime)
+        private async Task QueueIngestionAsync(
+            ICompleter completer,
+            IEnumerable<Uri> blobUris, DateTime creationTime)
         {
             var blobCount = blobUris.Count();
-            var completer = new ActionCompleter(() =>
+            var decoratedCompleter = new ActionCompleter(() =>
             {
                 Interlocked.Add(ref _ingestionCount, blobCount);
-            });
+                completer.Complete();
+            },
+            ex => completer.SetException(ex));
 
-            await _ingestionManager.QueueIngestionAsync(completer, blobUris, creationTime);
+            await _ingestionManager.QueueIngestionAsync(
+                decoratedCompleter, blobUris, creationTime);
             Interlocked.Add(ref _queueCount, blobCount);
         }
 
