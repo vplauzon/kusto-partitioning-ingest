@@ -16,7 +16,7 @@ namespace KustoPartitionIngest.InProcManagedIngestion
         private record OperationItem(string operationId, ICompleter completer);
         #endregion
 
-        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan PERIOD = TimeSpan.FromSeconds(3);
 
         private readonly ICslAdminProvider _commandClient;
         private readonly string _databaseName;
