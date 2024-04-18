@@ -62,6 +62,9 @@ namespace KustoPartitionIngest
             DateTime? creationTime,
             params (string key, string value)[] properties)
         {
+            var creationTimeText = creationTime == null
+                ? string.Empty
+                : $", creationTime='{creationTime.Value.ToString("yyyy-MM-dd HH:mm:ss")}'";
             var blobUriList = string.Join(
                 ", ",
                 blobUris
@@ -69,7 +72,7 @@ namespace KustoPartitionIngest
             var commandText = $@"
 .ingest async into table {_tableName}
 ({blobUriList})
-with (format='{_format}')";
+with (format='{_format}'{creationTimeText})";
 
             await _commandManager.QueueIngestionAsync(completer, commandText);
         }

@@ -5,9 +5,13 @@ using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Data.Net.Client;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Net.Sockets;
+using System.Reflection.Metadata;
+using static System.Reflection.Metadata.BlobBuilder;
 
 namespace KustoPartitionIngest.PreSharding
 {
@@ -16,15 +20,141 @@ namespace KustoPartitionIngest.PreSharding
         #region Inner types
         private record RowCountBlob(BlobEntry blobEntry, long rowCount);
 
-        private record AggregationBucket(List<RowCountBlob> blobs, int lastWholeShardLength);
+        private record BlobUriBatch(DateTime creationTime, IEnumerable<Uri> blobUris);
+
+        private class BlobBatching : IEnumerable<BlobUriBatch>
+        {
+            private readonly IEnumerable<RowCountBlob> _rowCountBlobs;
+            private readonly Func<Uri, DateTime> _extractTimeFromUri;
+
+            public BlobBatching(
+                IEnumerable<RowCountBlob> rowCountBlobs,
+                Func<Uri, DateTime> extractTimeFromUri)
+            {
+                _rowCountBlobs = rowCountBlobs;
+                _extractTimeFromUri = extractTimeFromUri;
+            }
+
+            #region IEnumerable<BlobUriBatch>
+            IEnumerator<BlobUriBatch> IEnumerable<BlobUriBatch>.GetEnumerator()
+            {
+                var blobsByCreationTime = _rowCountBlobs
+                    .GroupBy(b => _extractTimeFromUri(b.blobEntry.uri))
+                    .ToImmutableDictionary(g => g.Key);
+
+                foreach (var creationTime in blobsByCreationTime.Keys.OrderBy(k => k))
+                {   //  Sort blobs by decreasing amount of rows
+                    var blobs = blobsByCreationTime[creationTime]
+                        .OrderByDescending(b => b.rowCount)
+                        .ToList();
+
+                    //  Run until we empty the time partition
+                    while (blobs.Any())
+                    {
+                        var batch = GetBatch(blobs);
+                        var paddedBatch = GetPaddedBatch(batch, blobs);
+                        var uris = paddedBatch
+                            .Select(b => b.blobEntry.uri);
+
+                        yield return new BlobUriBatch(creationTime, uris);
+                    }
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return ((IEnumerable<BlobUriBatch>)this).GetEnumerator();
+            }
+            #endregion
+
+            private IImmutableList<RowCountBlob> GetBatch(List<RowCountBlob> blobs)
+            {
+                var blobIndex = new List<int>();
+                var i = 0;
+                var lastWholeShardIndexLength = 0;
+                long totalSize = 0;
+                long totalRows = 0;
+
+                while (i < blobs.Count)
+                {
+                    if (blobs[i].blobEntry.size + totalSize <= BATCH_SIZE)
+                    {
+                        var rowsBefore = totalRows;
+                        var rowsAfter = totalRows + blobs[i].rowCount;
+                        var shardCountBefore = rowsBefore / SHARD_ROW_COUNT;
+                        var shardCountAfter = rowsAfter / SHARD_ROW_COUNT;
+
+                        if (shardCountBefore != shardCountAfter)
+                        {
+                            lastWholeShardIndexLength = blobIndex.Count;
+                        }
+                        totalRows = rowsAfter;
+                        totalSize += blobs[i].blobEntry.size;
+                        blobIndex.Add(i);
+                        ++i;
+                    }
+                    else
+                    {
+                        return PickIndexes(blobs, blobIndex.Take(lastWholeShardIndexLength));
+                    }
+                }
+
+                //  Reach this point iif we emptied the blob list
+                return PickIndexes(blobs, blobIndex);
+            }
+
+            //  Here we try to pad a batch with smaller blobs while staying with the same number
+            //  of shards
+            private IImmutableList<RowCountBlob> GetPaddedBatch(
+                IImmutableList<RowCountBlob> batch,
+                List<RowCountBlob> blobs)
+            {
+                var blobIndex = new List<int>();
+                var i = 0;
+                var totalRows = batch.Sum(b => b.rowCount);
+                var shardCount = totalRows / SHARD_ROW_COUNT;
+
+                while (i < blobs.Count)
+                {
+                    var newTotalRows = totalRows + blobs[i].rowCount;
+                    var newShardCount = newTotalRows / SHARD_ROW_COUNT;
+
+                    if (newShardCount == shardCount)
+                    {
+                        totalRows = newTotalRows;
+                        blobIndex.Add(i);
+                    }
+                    ++i;
+                }
+
+                //  Reach this point iif we emptied the blob list
+                return batch
+                    .AddRange(PickIndexes(blobs, blobIndex));
+            }
+
+            private IImmutableList<RowCountBlob> PickIndexes(
+                List<RowCountBlob> blobs,
+                IEnumerable<int> indexes)
+            {
+                var subBlobs = indexes
+                    .Select(i => blobs[i])
+                    .ToImmutableArray();
+
+                foreach (var i in indexes.OrderByDescending(i => i))
+                {
+                    blobs.RemoveAt(i);
+                }
+
+                return subBlobs;
+            }
+        }
         #endregion
 
         private const long SHARD_ROW_COUNT = 1048576;
         private const long BATCH_SIZE = 1000 * 1000 * 1000 / 8;
         private const int PARALLEL_COUNTING = 15;
-        private const int MAX_BLOB_COUNT_COUNTING = 100;
+        private const int BLOB_COUNT_COUNTING_BATCH = 100;
 
-        private readonly ConcurrentQueue<RowCountBlob> _rowCountBlobs = new();
         private readonly ICslQueryProvider _queryClient;
         private readonly string _databaseName;
         private readonly InProcIngestionManager _ingestionManager;
@@ -68,10 +198,16 @@ namespace KustoPartitionIngest.PreSharding
             var processTasks = Enumerable.Range(0, PARALLEL_COUNTING)
                 .Select(i => Task.Run(() => EnrichBlobMetadataAsync()))
                 .ToImmutableArray();
-            var enrichTask = Task.WhenAll(processTasks);
 
-            await IngestEnrichedBlobsAsync(enrichTask);
-            await enrichTask;
+            await Task.WhenAll(processTasks);
+
+            var enrichedBlobs = processTasks
+                .Select(t => t.Result)
+                .SelectMany(i => i)
+                .SelectMany(i => i)
+                .ToImmutableArray();
+
+            await IngestEnrichedBlobsAsync(enrichedBlobs);
         }
 
         protected override IImmutableDictionary<string, string> AlterReported(
@@ -83,9 +219,8 @@ namespace KustoPartitionIngest.PreSharding
                 .Add("Ingested", _ingestionCount.ToString());
         }
 
-        private async Task IngestEnrichedBlobsAsync(Task enrichTask)
+        private async Task IngestEnrichedBlobsAsync(IImmutableList<RowCountBlob> enrichedBlobs)
         {
-            var aggregationBuckets = new Dictionary<DateTime, AggregationBucket>();
             var ingestionQueueCount = 0;
             var ingestionDoneCount = 0;
             TaskCompletionSource? ingestionDoneTaskSource = null;
@@ -97,72 +232,13 @@ namespace KustoPartitionIngest.PreSharding
                     ingestionDoneTaskSource.SetResult();
                 }
             });
+            var blobBatching = new BlobBatching(enrichedBlobs, ExtractTimeFromUri);
 
-            while (!enrichTask.IsCompleted || _rowCountBlobs.Any())
+            foreach (var batch in blobBatching)
             {
-                if (_rowCountBlobs.TryDequeue(out var blob))
-                {
-                    var creationTime = ExtractTimeFromUri(blob.blobEntry.uri);
-
-                    if (!aggregationBuckets.ContainsKey(creationTime))
-                    {
-                        aggregationBuckets[creationTime] = new AggregationBucket(
-                            new List<RowCountBlob>(),
-                            0);
-                    }
-
-                    var bucket = aggregationBuckets[creationTime];
-                    var sizeBefore = bucket.blobs.Sum(i => i.blobEntry.size);
-                    var sizeAfter = sizeBefore + blob.blobEntry.size;
-
-                    if (sizeAfter > BATCH_SIZE)
-                    {   //  We ingest up to the last whole shard index
-                        if (bucket.lastWholeShardLength == 0)
-                        {
-                            throw new NotSupportedException(
-                                "Bigger than batch size blob aren't supported");
-                        }
-                        await QueueIngestionAsync(
-                            countCompleter,
-                            bucket.blobs
-                            .Take(bucket.lastWholeShardLength)
-                            .Select(i => i.blobEntry.uri),
-                            creationTime);
-                        ++ingestionQueueCount;
-
-                        bucket.blobs.RemoveRange(0, bucket.lastWholeShardLength);
-                        bucket = bucket with { lastWholeShardLength = 0 };
-                    }
-
-                    var rowsBefore = bucket.blobs.Sum(i => i.rowCount);
-                    var rowsAfter = rowsBefore + blob.rowCount;
-                    var shardCountBefore = rowsBefore / SHARD_ROW_COUNT;
-                    var shardCountAfter = rowsAfter / SHARD_ROW_COUNT;
-
-                    if (shardCountBefore != shardCountAfter)
-                    {
-                        bucket = bucket with { lastWholeShardLength = bucket.blobs.Count() };
-                    }
-                    bucket.blobs.Add(blob);
-                    aggregationBuckets[creationTime] = bucket;
-                }
-                else
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(1));
-                }
+                await QueueIngestionAsync(countCompleter, batch.blobUris, batch.creationTime);
             }
-            //  Flush all buckets
-            foreach (var pair in aggregationBuckets)
-            {
-                var creationTime = pair.Key;
-                var bucket = pair.Value;
 
-                await QueueIngestionAsync(
-                    countCompleter,
-                    bucket.blobs.Select(i => i.blobEntry.uri),
-                    creationTime);
-                ++ingestionQueueCount;
-            }
             ingestionDoneTaskSource = new TaskCompletionSource();
             await ingestionDoneTaskSource.Task;
         }
@@ -184,8 +260,10 @@ namespace KustoPartitionIngest.PreSharding
             Interlocked.Add(ref _queueCount, blobCount);
         }
 
-        private async Task EnrichBlobMetadataAsync()
+        private async Task<IEnumerable<IEnumerable<RowCountBlob>>> EnrichBlobMetadataAsync()
         {
+            var blobHeap = new List<IEnumerable<RowCountBlob>>();
+
             while (true)
             {
                 var blobEntries = DequeueBlobEntries();
@@ -199,24 +277,21 @@ namespace KustoPartitionIngest.PreSharding
                             entry,
                             rowCount));
 
-                    foreach (var b in enrichedBlobs)
-                    {
-                        _rowCountBlobs.Enqueue(b);
-                    }
+                    blobHeap.Add(enrichedBlobs);
                     Interlocked.Add(ref _enrichedBlobCount, enrichedBlobs.Count());
                 }
                 else
                 {
-                    return;
+                    return blobHeap;
                 }
             }
         }
 
         private IImmutableList<BlobEntry> DequeueBlobEntries()
         {
-            var list = new List<BlobEntry>(MAX_BLOB_COUNT_COUNTING);
+            var list = new List<BlobEntry>(BLOB_COUNT_COUNTING_BATCH);
 
-            while (list.Count() < MAX_BLOB_COUNT_COUNTING)
+            while (list.Count() < BLOB_COUNT_COUNTING_BATCH)
             {
                 var blobEntry = DequeueBlobEntry();
 
